@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SnapCard AI - 智慧辨識穩定版</title>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="[https://unpkg.com/react@18/umd/react.development.js](https://unpkg.com/react@18/umd/react.development.js)"></script>
+    <script src="[https://unpkg.com/react-dom@18/umd/react-dom.development.js](https://unpkg.com/react-dom@18/umd/react-dom.development.js)"></script>
+    <script src="[https://unpkg.com/@babel/standalone/babel.min.js](https://unpkg.com/@babel/standalone/babel.min.js)"></script>
+    <script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script>
+    <script src="[https://unpkg.com/lucide@latest](https://unpkg.com/lucide@latest)"></script>
     <style>
         @keyframes scan {
             0% { transform: translateY(0); opacity: 0; }
@@ -41,7 +41,7 @@
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
 
-            // 回到你說可以開啟相機的「偵錯版」核心邏輯
+            // 啟動相機核心邏輯
             const startCamera = async () => {
                 setStatus("正在請求相機權限...");
                 setError(null);
@@ -54,7 +54,7 @@
 
                     const constraints = { 
                         video: { 
-                            facingMode: { ideal: "environment" }, // 使用後鏡頭
+                            facingMode: { ideal: "environment" },
                             width: { ideal: 1920 },
                             height: { ideal: 1080 }
                         } 
@@ -64,7 +64,6 @@
                     
                     if (videoRef.current) {
                         videoRef.current.srcObject = stream;
-                        // 使用你確認可運作的 onloadedmetadata 觸發 play
                         videoRef.current.onloadedmetadata = () => {
                             videoRef.current.play();
                             setIsScanning(true);
@@ -84,6 +83,7 @@
                 const canvas = canvasRef.current;
                 if (video && canvas) {
                     const ctx = canvas.getContext('2d');
+                    // 使用影片實際解析度
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -91,7 +91,6 @@
                     setCapturedImage(dataUrl);
                     setIsScanning(false);
                     
-                    // 拍照後停止相機串流以節省資源
                     const stream = video.srcObject;
                     if (stream) stream.getTracks().forEach(t => t.stop());
                 }
@@ -101,8 +100,9 @@
             const analyzeImage = async (base64Data) => {
                 setIsProcessing(true);
                 setStatus("AI 辨識中...");
+                setError(null);
                 
-                const prompt = "你是一位專業的名片秘書。請分析這張名片圖片，並以繁體中文回傳 JSON 格式資訊。欄位包含：name (姓名), jobTitle (職稱), company (公司名稱), phone (電話), email (電子郵件), address (地址)。如果找不到該資訊，請回傳空字串。只回傳 JSON 物件，不要有額外描述。";
+                const prompt = "你是一位專業的名片秘書。請分析這張名片圖片，並以繁體中文回傳 JSON 格式資訊。欄位包含：name (姓名), jobTitle (職稱), company (公司名稱), phone (電話), email (電子郵件), address (地址)。如果找不到該資訊，請回傳空字串。";
                 
                 const payload = {
                     contents: [{
@@ -110,10 +110,12 @@
                             { text: prompt },
                             { inlineData: { mimeType: "image/png", data: base64Data.split(',')[1] } }
                         ]
-                    }]
+                    }],
+                    generationConfig: {
+                        responseMimeType: "application/json"
+                    }
                 };
 
-                // 指數退避重試邏輯
                 const fetchWithRetry = async (url, options, retries = 5, delay = 1000) => {
                     try {
                         const response = await fetch(url, options);
@@ -139,13 +141,23 @@
                     );
 
                     const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                    const jsonString = text.replace(/```json/g, "").replace(/```/g, "").trim();
+                    if (!text) throw new Error("AI 未能產出有效文字內容");
+
+                    // 更強大的 JSON 提取邏輯
+                    let jsonString = text.trim();
+                    const firstBracket = jsonString.indexOf('{');
+                    const lastBracket = jsonString.lastIndexOf('}');
+                    
+                    if (firstBracket !== -1 && lastBracket !== -1) {
+                        jsonString = jsonString.substring(firstBracket, lastBracket + 1);
+                    }
+                    
                     const parsedData = JSON.parse(jsonString);
                     setResultData(parsedData);
                     setStatus("辨識完成");
                 } catch (err) {
-                    console.error(err);
-                    setError("辨識失敗，請確認照片清晰度或檢查網路。");
+                    console.error("辨識錯誤詳情:", err);
+                    setError(`辨識失敗: ${err.message || "未知原因"}`);
                     setStatus("辨識出錯");
                 } finally {
                     setIsProcessing(false);
@@ -161,14 +173,19 @@
             };
 
             return (
-                <div className="flex flex-col h-screen relative font-sans">
+                <div className="flex flex-col h-screen relative font-sans overflow-hidden">
                     {/* 頂部狀態列 */}
                     <div className="p-4 bg-black/80 flex justify-between items-center z-20">
                         <div className="flex items-center gap-2">
                             <h1 className="text-blue-500 font-black text-sm tracking-tighter">SnapCard AI</h1>
-                            <span className="text-[10px] text-gray-500 font-mono uppercase tracking-widest">{status}</span>
+                            <span className="text-[10px] text-gray-400 font-mono uppercase tracking-widest">{status}</span>
                         </div>
-                        {error && <span className="text-[10px] text-red-500 font-bold">{error}</span>}
+                        {error && (
+                            <div className="bg-red-500/20 px-2 py-1 rounded border border-red-500/50 flex items-center gap-1">
+                                <i data-lucide="alert-circle" className="w-3 h-3 text-red-500"></i>
+                                <span className="text-[9px] text-red-500 font-bold truncate max-w-[150px]">{error}</span>
+                            </div>
+                        )}
                     </div>
 
                     {/* 主要內容區域 */}
@@ -186,7 +203,7 @@
 
                         {/* 掃描動畫框 */}
                         {isScanning && (
-                            <div className="absolute inset-0 flex items-center justify-center p-10 pointer-events-none">
+                            <div className="absolute inset-0 flex items-center justify-center p-10 pointer-events-none z-10">
                                 <div className="w-full aspect-[1.6/1] border-2 border-blue-500/50 rounded-lg relative overflow-hidden shadow-[0_0_0_1000px_rgba(0,0,0,0.6)]">
                                     <div className="scan-line absolute top-0"></div>
                                 </div>
@@ -195,9 +212,9 @@
 
                         {/* 辨識中遮罩 */}
                         {isProcessing && (
-                            <div className="absolute inset-0 bg-blue-600/40 backdrop-blur-md flex flex-col items-center justify-center text-white z-30">
-                                <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin mb-4"></div>
-                                <p className="font-bold">AI 智慧辨識中...</p>
+                            <div className="absolute inset-0 bg-blue-600/40 backdrop-blur-md flex flex-col items-center justify-center text-white z-30 animate-in fade-in duration-300">
+                                <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin mb-4 shadow-xl"></div>
+                                <p className="font-bold tracking-widest uppercase text-sm">正在深度解析名片...</p>
                             </div>
                         )}
 
@@ -206,12 +223,12 @@
                             <div className="absolute inset-0 z-40 flex flex-col result-panel animate-in slide-in-from-bottom-full duration-500">
                                 <div className="p-8 flex-1 overflow-y-auto">
                                     <div className="flex items-center gap-4 mb-8">
-                                        <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-bold text-2xl shadow-lg">
+                                        <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl flex items-center justify-center text-white font-bold text-2xl shadow-xl">
                                             {resultData.name?.[0] || "👤"}
                                         </div>
                                         <div>
-                                            <h3 className="text-2xl font-bold">{resultData.name || "未辨識"}</h3>
-                                            <p className="text-blue-500 text-sm font-medium">{resultData.jobTitle}</p>
+                                            <h3 className="text-2xl font-bold text-gray-800">{resultData.name || "未辨識"}</h3>
+                                            <p className="text-blue-600 text-sm font-semibold">{resultData.jobTitle}</p>
                                         </div>
                                     </div>
                                     
@@ -228,25 +245,25 @@
                                                 </div>
                                                 <div className="flex-1">
                                                     <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest">{item.label}</p>
-                                                    <p className="text-sm font-bold text-gray-700 mt-0.5">{item.value || "---"}</p>
+                                                    <p className="text-sm font-bold text-gray-700 mt-0.5 leading-snug">{item.value || "---"}</p>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
-                                <div className="p-8 bg-white border-t border-gray-100 flex flex-col gap-3">
+                                <div className="p-8 bg-white border-t border-gray-100 flex flex-col gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
                                     <button 
-                                        onClick={() => alert("儲存功能即將推出！")}
-                                        className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg flex items-center justify-center gap-2"
+                                        onClick={() => alert("功能解鎖：下一階段將與雲端資料庫串接！")}
+                                        className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
                                     >
                                         <i data-lucide="save" className="w-5 h-5"></i>
                                         確認並儲存名片
                                     </button>
                                     <button 
                                         onClick={resetApp}
-                                        className="w-full text-gray-400 py-2 text-xs font-bold uppercase tracking-widest"
+                                        className="w-full text-gray-400 py-2 text-xs font-bold uppercase tracking-[0.2em]"
                                     >
-                                        放棄並重拍
+                                        重新拍攝
                                     </button>
                                 </div>
                             </div>
@@ -264,16 +281,16 @@
                                     啟動掃描器
                                 </button>
                             ) : capturedImage ? (
-                                <div className="flex gap-4 w-full max-w-xs">
+                                <div className="flex gap-4 w-full max-w-xs animate-in zoom-in-90 duration-300">
                                     <button 
                                         onClick={resetApp}
-                                        className="flex-1 bg-white/10 text-white py-4 rounded-2xl font-bold border border-white/20"
+                                        className="flex-1 bg-white/10 text-white py-4 rounded-2xl font-bold border border-white/20 active:bg-white/20"
                                     >
                                         重拍
                                     </button>
                                     <button 
                                         onClick={() => analyzeImage(capturedImage)}
-                                        className="flex-[2] bg-blue-600 text-white py-4 rounded-2xl font-bold"
+                                        className="flex-[2] bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-blue-900/20 active:scale-[0.98]"
                                     >
                                         開始辨識
                                     </button>
@@ -281,9 +298,9 @@
                             ) : (
                                 <button 
                                     onClick={takePhoto}
-                                    className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.3)]"
+                                    className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.2)] active:scale-90 transition-transform"
                                 >
-                                    <div className="w-16 h-16 bg-white rounded-full active:scale-90 transition-transform"></div>
+                                    <div className="w-16 h-16 bg-white rounded-full"></div>
                                 </button>
                             )}
                         </div>
