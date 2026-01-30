@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SnapCard AI - 智慧掃描</title>
-    <!-- 載入必要的函式庫 -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <title>SnapCard AI - 相機偵錯版</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -16,212 +15,128 @@
             50% { opacity: 1; }
             100% { transform: translateY(200px); opacity: 0; }
         }
-        .scan-line {
-            animation: scan 2s linear infinite;
-            background: linear-gradient(to bottom, transparent, #3b82f6);
-            height: 2px;
-            width: 100%;
-        }
-        body { background-color: #000; margin: 0; overflow: hidden; position: fixed; width: 100%; height: 100%; color: white; font-family: sans-serif; }
-        #root { height: 100%; }
-        /* 防止 iOS 橡皮條效果 */
-        .no-scroll { overflow: hidden; height: 100%; position: fixed; width: 100%; }
+        .scan-line { animation: scan 2s linear infinite; background: linear-gradient(to bottom, transparent, #3b82f6); height: 2px; width: 100%; }
+        body { background-color: #000; color: white; margin: 0; overflow: hidden; }
+        video { object-fit: cover; width: 100%; height: 100%; }
     </style>
 </head>
 <body>
-    <div id="root">
-        <!-- 初始載入顯示，防止白屏 -->
-        <div class="flex items-center justify-center h-full">
-            <p className="text-gray-400">正在初始化系統...</p>
-        </div>
-    </div>
+    <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
         function App() {
-            const [status, setStatus] = useState('idle'); // idle, loading, streaming, captured, error
-            const [errorMessage, setErrorMessage] = useState('');
+            const [status, setStatus] = useState("等待啟動...");
+            const [error, setError] = useState(null);
+            const [isScanning, setIsScanning] = useState(false);
+            const [capturedImage, setCapturedImage] = useState(null);
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
-            const [capturedImage, setCapturedImage] = useState(null);
 
-            // 檢查是否支援媒體裝置
-            useEffect(() => {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    setStatus('error');
-                    setErrorMessage('您的瀏覽器不支援相機功能，請確保使用 Safari (iOS) 或 Chrome (Android) 並透過 HTTPS 開啟。');
-                }
-                // 初始化圖示
-                if (window.lucide) lucide.createIcons();
-            }, []);
-
-            useEffect(() => {
-                if (window.lucide) lucide.createIcons();
-            }, [status, capturedImage]);
-
-            // 啟動相機
+            // 核心功能：啟動鏡頭
             const startCamera = async () => {
-                setStatus('loading');
-                setErrorMessage('');
+                setStatus("正在請求相機權限...");
+                setError(null);
                 
                 try {
+                    // 檢查瀏覽器是否支援
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        throw new Error("您的瀏覽器不支援相機功能，請換用 Safari 或 Chrome。");
+                    }
+
                     const constraints = { 
                         video: { 
-                            facingMode: "environment", // 強制使用後鏡頭
-                            width: { ideal: 1280 },
-                            height: { ideal: 720 }
+                            facingMode: { ideal: "environment" }, // 強制後鏡頭
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
                         } 
                     };
-                    
+
                     const stream = await navigator.mediaDevices.getUserMedia(constraints);
                     
                     if (videoRef.current) {
                         videoRef.current.srcObject = stream;
-                        setStatus('streaming');
+                        // 重要：iOS 需要在視訊準備好後才顯示
+                        videoRef.current.onloadedmetadata = () => {
+                            videoRef.current.play();
+                            setIsScanning(true);
+                            setStatus("相機運作中");
+                        };
                     }
                 } catch (err) {
-                    console.error("相機啟動失敗:", err);
-                    setStatus('error');
-                    if (err.name === 'NotAllowedError') {
-                        setErrorMessage('相機權限被拒絕。請在瀏覽器設定中允許此網站存取相機。');
-                    } else if (err.name === 'NotFoundError') {
-                        setErrorMessage('找不到相機裝置。');
-                    } else {
-                        setErrorMessage('啟動相機時發生錯誤：' + err.message);
-                    }
+                    console.error(err);
+                    setError(`啟動失敗: ${err.message}`);
+                    setStatus("失敗");
                 }
             };
 
-            // 拍照
             const takePhoto = () => {
                 const video = videoRef.current;
                 const canvas = canvasRef.current;
                 if (video && canvas) {
-                    const context = canvas.getContext('2d');
+                    const ctx = canvas.getContext('2d');
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
-                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    const dataUrl = canvas.toDataURL('image/png');
-                    setCapturedImage(dataUrl);
-                    setStatus('captured');
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    setCapturedImage(canvas.toDataURL('image/png'));
+                    setIsScanning(false);
                     
-                    // 停止相機流以省電
+                    // 停用相機流
                     const stream = video.srcObject;
-                    if (stream) {
-                        stream.getTracks().forEach(track => track.stop());
-                    }
+                    if (stream) stream.getTracks().forEach(t => t.stop());
                 }
             };
 
-            // 重置
-            const reset = () => {
-                setCapturedImage(null);
-                startCamera();
-            };
-
             return (
-                <div className="flex flex-col h-full text-white relative bg-black no-scroll">
-                    {/* 頂部導覽 */}
-                    <div className="p-6 flex justify-between items-center z-20 bg-black/60 backdrop-blur-md">
-                        <button onClick={() => location.reload()} className="p-2 active:opacity-50">
-                            <i data-lucide="refresh-cw" className="w-5 h-5"></i>
-                        </button>
-                        <span className="font-bold tracking-widest uppercase text-xs">SnapCard AI 掃描</span>
-                        <div className="w-9"></div>
+                <div className="flex flex-col h-screen relative font-sans">
+                    {/* 狀態欄 */}
+                    <div className="p-4 bg-black/80 flex justify-between items-center z-20">
+                        <span className="text-xs font-mono text-blue-400">{status}</span>
+                        {error && <span className="text-xs text-red-500 bg-red-100/10 px-2 py-1 rounded">{error}</span>}
                     </div>
 
-                    {/* 主要內容區域 */}
-                    <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-gray-900">
-                        {status === 'idle' && (
-                            <div className="text-center px-10">
-                                <div className="w-20 h-20 bg-blue-600/20 rounded-full flex items-center justify-center mx-auto mb-6">
-                                    <i data-lucide="camera" className="w-10 h-10 text-blue-500"></i>
+                    {/* 相機預覽區 */}
+                    <div className="flex-1 relative bg-gray-900 flex items-center justify-center">
+                        {!capturedImage ? (
+                            <video ref={videoRef} playsInline muted className="h-full w-full" />
+                        ) : (
+                            <img src={capturedImage} className="max-h-full max-w-full" alt="Captured" />
+                        )}
+
+                        {/* 掃描框 */}
+                        {isScanning && (
+                            <div className="absolute inset-0 flex items-center justify-center p-10 pointer-events-none">
+                                <div className="w-full aspect-[1.6/1] border-2 border-blue-500/50 rounded-lg relative overflow-hidden shadow-[0_0_0_1000px_rgba(0,0,0,0.6)]">
+                                    <div className="scan-line absolute top-0"></div>
                                 </div>
-                                <h2 className="text-xl font-bold mb-2">準備好掃描名片了嗎？</h2>
-                                <p className="text-gray-400 text-sm mb-8">請點擊下方按鈕啟動相機</p>
-                            </div>
-                        )}
-
-                        {status === 'loading' && (
-                            <div className="flex flex-col items-center">
-                                <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-                                <p className="text-blue-500 font-medium">相機啟動中...</p>
-                            </div>
-                        )}
-
-                        {status === 'error' && (
-                            <div className="text-center px-10">
-                                <i data-lucide="alert-circle" className="w-16 h-16 text-red-500 mx-auto mb-4"></i>
-                                <p className="text-red-400 mb-6">{errorMessage}</p>
-                                <button onClick={startCamera} className="bg-white text-black px-6 py-2 rounded-full font-bold">重試</button>
-                            </div>
-                        )}
-
-                        {status === 'streaming' && (
-                            <>
-                                <video 
-                                    ref={videoRef} 
-                                    autoPlay 
-                                    playsInline 
-                                    className="absolute inset-0 w-full h-full object-cover"
-                                />
-                                {/* 掃描框 */}
-                                <div className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none">
-                                    <div className="relative w-full aspect-[1.6/1] border-2 border-white/30 rounded-2xl shadow-[0_0_0_1000px_rgba(0,0,0,0.6)]">
-                                        <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
-                                        <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
-                                        <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
-                                        <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
-                                        <div className="scan-line absolute top-0 left-0"></div>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-
-                        {status === 'captured' && capturedImage && (
-                            <div className="w-full h-full flex items-center justify-center p-4 bg-black">
-                                <img src={capturedImage} className="max-w-full max-h-full rounded-lg shadow-2xl" alt="Captured" />
                             </div>
                         )}
                     </div>
 
-                    {/* 底部按鈕 */}
-                    <div className="p-10 flex justify-center items-center z-20 bg-black/60 backdrop-blur-md">
-                        {status === 'idle' && (
+                    {/* 按鈕控制區 */}
+                    <div className="p-10 bg-black flex justify-center items-center gap-6 z-20">
+                        {!isScanning && !capturedImage ? (
                             <button 
                                 onClick={startCamera}
-                                className="bg-blue-600 text-white px-12 py-4 rounded-full font-bold shadow-lg active:scale-95 transition-all"
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-full font-bold shadow-lg"
                             >
                                 啟動相機
                             </button>
-                        )}
-
-                        {status === 'streaming' && (
+                        ) : capturedImage ? (
+                            <button 
+                                onClick={() => { setCapturedImage(null); startCamera(); }}
+                                className="bg-white/20 text-white px-8 py-4 rounded-full font-bold"
+                            >
+                                重拍
+                            </button>
+                        ) : (
                             <button 
                                 onClick={takePhoto}
-                                className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center active:scale-90 transition-transform"
+                                className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center"
                             >
-                                <div className="w-16 h-16 bg-white rounded-full"></div>
+                                <div className="w-16 h-16 bg-white rounded-full active:scale-90 transition-transform"></div>
                             </button>
-                        )}
-
-                        {status === 'captured' && (
-                            <div className="flex items-center space-x-10">
-                                <button 
-                                    onClick={reset}
-                                    className="flex flex-col items-center space-y-2 opacity-80 active:opacity-100"
-                                >
-                                    <div className="bg-white/10 p-4 rounded-full"><i data-lucide="x" className="w-6 h-6"></i></div>
-                                    <span className="text-[10px] font-bold uppercase tracking-widest">重拍</span>
-                                </button>
-                                <button 
-                                    onClick={() => alert("AI 辨識功能開發中！")}
-                                    className="bg-blue-600 px-10 py-4 rounded-full font-bold shadow-xl active:scale-95 transition-all"
-                                >
-                                    使用此照片
-                                </button>
-                            </div>
                         )}
                     </div>
 
@@ -230,9 +145,9 @@
             );
         }
 
-        // 渲染 App
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
+        setTimeout(() => lucide.createIcons(), 500);
     </script>
 </body>
 </html>
