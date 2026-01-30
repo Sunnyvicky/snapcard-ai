@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SnapCard AI - 智慧辨識穩定版</title>
-    <script src="[https://unpkg.com/react@18/umd/react.development.js](https://unpkg.com/react@18/umd/react.development.js)"></script>
-    <script src="[https://unpkg.com/react-dom@18/umd/react-dom.development.js](https://unpkg.com/react-dom@18/umd/react-dom.development.js)"></script>
-    <script src="[https://unpkg.com/@babel/standalone/babel.min.js](https://unpkg.com/@babel/standalone/babel.min.js)"></script>
-    <script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script>
-    <script src="[https://unpkg.com/lucide@latest](https://unpkg.com/lucide@latest)"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @keyframes scan {
             0% { transform: translateY(0); opacity: 0; }
@@ -41,7 +41,7 @@
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
 
-            // 啟動相機核心邏輯
+            // 強化後的相機啟動邏輯
             const startCamera = async () => {
                 setStatus("正在請求相機權限...");
                 setError(null);
@@ -49,14 +49,15 @@
                 
                 try {
                     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                        throw new Error("您的瀏覽器不支援相機功能，請換用 Safari 或 Chrome。");
+                        throw new Error("您的瀏覽器不支援相機功能，請換用 Safari。");
                     }
 
+                    // 簡化約束條件以提高成功率
                     const constraints = { 
                         video: { 
-                            facingMode: { ideal: "environment" },
-                            width: { ideal: 1920 },
-                            height: { ideal: 1080 }
+                            facingMode: "environment",
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
                         } 
                     };
 
@@ -64,15 +65,20 @@
                     
                     if (videoRef.current) {
                         videoRef.current.srcObject = stream;
-                        videoRef.current.onloadedmetadata = () => {
-                            videoRef.current.play();
+                        // 直接嘗試播放，不等待 metadata 事件
+                        try {
+                            await videoRef.current.play();
                             setIsScanning(true);
                             setStatus("相機運作中");
-                        };
+                        } catch (playError) {
+                            console.error("Play failed:", playError);
+                            // 如果 play 失敗，嘗試在 user gesture 後再次執行
+                            setStatus("請再次點擊按鈕");
+                        }
                     }
                 } catch (err) {
-                    console.error(err);
-                    setError(`啟動失敗: ${err.message}`);
+                    console.error("Camera error:", err);
+                    setError(`啟動失敗: ${err.name === 'NotAllowedError' ? '請授權相機權限' : err.message}`);
                     setStatus("失敗");
                 }
             };
@@ -83,7 +89,6 @@
                 const canvas = canvasRef.current;
                 if (video && canvas) {
                     const ctx = canvas.getContext('2d');
-                    // 使用影片實際解析度
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -96,7 +101,7 @@
                 }
             };
 
-            // AI 辨識功能 (Gemini 2.5 Flash)
+            // AI 辨識功能
             const analyzeImage = async (base64Data) => {
                 setIsProcessing(true);
                 setStatus("AI 辨識中...");
@@ -141,13 +146,11 @@
                     );
 
                     const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (!text) throw new Error("AI 未能產出有效文字內容");
+                    if (!text) throw new Error("AI 未能產出有效文字");
 
-                    // 更強大的 JSON 提取邏輯
                     let jsonString = text.trim();
                     const firstBracket = jsonString.indexOf('{');
                     const lastBracket = jsonString.lastIndexOf('}');
-                    
                     if (firstBracket !== -1 && lastBracket !== -1) {
                         jsonString = jsonString.substring(firstBracket, lastBracket + 1);
                     }
@@ -156,15 +159,13 @@
                     setResultData(parsedData);
                     setStatus("辨識完成");
                 } catch (err) {
-                    console.error("辨識錯誤詳情:", err);
-                    setError(`辨識失敗: ${err.message || "未知原因"}`);
+                    setError(`辨識失敗: ${err.message}`);
                     setStatus("辨識出錯");
                 } finally {
                     setIsProcessing(false);
                 }
             };
 
-            // 重置功能
             const resetApp = () => {
                 setCapturedImage(null);
                 setResultData(null);
@@ -195,6 +196,7 @@
                                 ref={videoRef} 
                                 playsInline 
                                 muted 
+                                autoPlay
                                 className="h-full w-full object-cover" 
                             />
                         ) : capturedImage && !resultData ? (
@@ -253,7 +255,7 @@
                                 </div>
                                 <div className="p-8 bg-white border-t border-gray-100 flex flex-col gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
                                     <button 
-                                        onClick={() => alert("功能解鎖：下一階段將與雲端資料庫串接！")}
+                                        onClick={() => alert("下一步功能：串接雲端資料庫！")}
                                         className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
                                     >
                                         <i data-lucide="save" className="w-5 h-5"></i>
