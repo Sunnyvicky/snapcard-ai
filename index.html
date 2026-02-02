@@ -37,7 +37,7 @@
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
-        // --- 獨立的相機元件 (後鏡頭修正版) ---
+        // --- 獨立的相機元件 (強制後鏡頭版) ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [debugMsg, setDebugMsg] = useState("初始化中...");
@@ -54,23 +54,30 @@
                     }
 
                     try {
-                        setDebugMsg("請求權限中...");
+                        setDebugMsg("請求後鏡頭權限...");
                         
-                        // 修正重點：指定 ideal: "environment" 以優先使用後鏡頭
-                        // 使用 ideal 而非 exact 可以增加相容性，避免在找不到後鏡頭時直接報錯
-                        const stream = await navigator.mediaDevices.getUserMedia({ 
-                            video: { 
-                                facingMode: { ideal: "environment" } 
-                            },
-                            audio: false 
-                        });
+                        let stream;
+                        try {
+                            // 策略 1: 強制指定後鏡頭 (可能在某些裝置失敗)
+                            stream = await navigator.mediaDevices.getUserMedia({ 
+                                video: { facingMode: { exact: "environment" } },
+                                audio: false 
+                            });
+                        } catch (err) {
+                            console.warn("Exact environment failed, retrying with ideal...", err);
+                            // 策略 2: 退回理想設定 (相容性較高)
+                            stream = await navigator.mediaDevices.getUserMedia({ 
+                                video: { facingMode: "environment" },
+                                audio: false 
+                            });
+                        }
                         
                         setDebugMsg("已取得權限，準備串流...");
                         localStream = stream;
                         
                         if (videoRef.current) {
                             videoRef.current.srcObject = stream;
-                            // 保持之前的暴力播放邏輯，確保畫面一定會出來
+                            // 保持暴力播放邏輯，確保畫面一定會出來
                             videoRef.current.onloadedmetadata = () => {
                                 setDebugMsg("載入元數據，嘗試播放...");
                                 videoRef.current.play()
@@ -162,6 +169,7 @@
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState(null);
             const [error, setError] = useState(null);
+            const [currentCardId, setCurrentCardId] = useState(null); // 新增：用於判斷是「新掃描」還是「查看舊卡片」
             
             const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem("snapcard_gemini_key") || "");
             const [tempKeyInput, setTempKeyInput] = useState("");
@@ -201,7 +209,21 @@
 
             const saveCard = () => {
                 setCards([{ id: Date.now(), ...resultData, image: capturedImage }, ...cards]);
+                cleanupAndHome();
+            };
+
+            const viewSavedCard = (card) => {
+                setResultData(card);
+                setCapturedImage(card.image);
+                setCurrentCardId(card.id);
+                setView("result");
+            };
+
+            const cleanupAndHome = () => {
                 setView("home");
+                setCapturedImage(null);
+                setResultData(null);
+                setCurrentCardId(null);
             };
 
             return (
@@ -227,15 +249,24 @@
                                     <div className="text-center py-20 text-gray-400 text-sm">暫無名片</div>
                                 ) : (
                                     cards.map(c => (
-                                        <div key={c.id} className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center">
-                                            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-500 shrink-0 overflow-hidden">
-                                                {c.name?.[0]}
+                                        <div 
+                                            key={c.id} 
+                                            onClick={() => viewSavedCard(c)}
+                                            className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform"
+                                        >
+                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center font-bold text-gray-500 shrink-0 overflow-hidden border border-gray-200">
+                                                {c.image ? <img src={c.image} className="w-full h-full object-cover" /> : c.name?.[0]}
                                             </div>
                                             <div className="min-w-0 flex-1">
-                                                <div className="font-bold truncate">{c.name}</div>
+                                                <div className="font-bold truncate text-gray-800">{c.name}</div>
                                                 <div className="text-xs text-gray-400 truncate">{c.company}</div>
                                             </div>
-                                            <button onClick={() => setCards(cards.filter(x => x.id !== c.id))} className="text-gray-300"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); if(confirm("確定刪除?")) setCards(cards.filter(x => x.id !== c.id)); }} 
+                                                className="p-2 text-gray-300 hover:text-red-500"
+                                            >
+                                                <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                            </button>
                                         </div>
                                     ))
                                 )}
@@ -260,27 +291,49 @@
                         )}
 
                         {view === "result" && resultData && (
-                            <div className="space-y-4">
+                            <div className="space-y-4 pb-20">
                                 <div className="bg-white p-6 rounded-2xl shadow-lg border-t-4 border-blue-500">
-                                    <div className="flex items-center gap-4 mb-4">
-                                        <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xl">
-                                            {resultData.name?.[0]}
+                                    <div className="flex items-center gap-4 mb-6">
+                                        <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 font-bold text-2xl overflow-hidden border-2 border-white shadow-md">
+                                            {capturedImage ? <img src={capturedImage} className="w-full h-full object-cover" /> : resultData.name?.[0]}
                                         </div>
                                         <div>
                                             <h2 className="text-xl font-black text-gray-800">{resultData.name}</h2>
                                             <p className="text-blue-500 font-bold text-sm">{resultData.jobTitle}</p>
                                         </div>
                                     </div>
-                                    <div className="space-y-2 text-sm text-gray-600">
-                                        <p className="flex gap-2"><i data-lucide="building" className="w-4 h-4"></i> {resultData.company}</p>
-                                        <p className="flex gap-2"><i data-lucide="phone" className="w-4 h-4"></i> {resultData.phone}</p>
-                                        <p className="flex gap-2"><i data-lucide="mail" className="w-4 h-4"></i> {resultData.email}</p>
-                                        <p className="flex gap-2"><i data-lucide="map-pin" className="w-4 h-4"></i> {resultData.address}</p>
+                                    <div className="space-y-3 text-sm text-gray-600">
+                                        <div className="flex items-start gap-3">
+                                            <i data-lucide="building" className="w-4 h-4 mt-0.5 text-gray-400"></i>
+                                            <span className="font-medium text-gray-800">{resultData.company || "未填寫"}</span>
+                                        </div>
+                                        <div className="flex items-start gap-3">
+                                            <i data-lucide="phone" className="w-4 h-4 mt-0.5 text-gray-400"></i>
+                                            <span className="font-medium text-gray-800">{resultData.phone || "未填寫"}</span>
+                                        </div>
+                                        <div className="flex items-start gap-3">
+                                            <i data-lucide="mail" className="w-4 h-4 mt-0.5 text-gray-400"></i>
+                                            <span className="font-medium text-gray-800 break-all">{resultData.email || "未填寫"}</span>
+                                        </div>
+                                        <div className="flex items-start gap-3">
+                                            <i data-lucide="map-pin" className="w-4 h-4 mt-0.5 text-gray-400"></i>
+                                            <span className="font-medium text-gray-800">{resultData.address || "未填寫"}</span>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <button onClick={saveCard} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-bold flex justify-center items-center gap-2"><i data-lucide="save" className="w-4 h-4"></i> 儲存</button>
-                                    <button onClick={() => setView("home")} className="flex-1 bg-gray-200 text-gray-600 p-3 rounded-xl font-bold">放棄</button>
+                                
+                                {/* 按鈕區：根據是否為已儲存的卡片顯示不同按鈕 */}
+                                <div className="fixed bottom-0 left-0 w-full p-4 bg-white border-t flex gap-2 z-30">
+                                    {currentCardId ? (
+                                        <button onClick={cleanupAndHome} className="w-full bg-gray-800 text-white p-3 rounded-xl font-bold">返回列表</button>
+                                    ) : (
+                                        <>
+                                            <button onClick={cleanupAndHome} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">放棄</button>
+                                            <button onClick={saveCard} className="flex-[2] bg-blue-600 text-white p-3 rounded-xl font-bold flex justify-center items-center gap-2">
+                                                <i data-lucide="save" className="w-4 h-4"></i> 儲存
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -288,10 +341,10 @@
 
                     {/* Footer Fab */}
                     {view === "home" && (
-                        <div className="p-6 bg-white border-t flex justify-center">
+                        <div className="fixed bottom-6 left-0 w-full flex justify-center pointer-events-none">
                             <button 
                                 onClick={() => customApiKey ? setView("scan") : setView("settings")}
-                                className="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-xl active:scale-90 transition-transform"
+                                className="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform pointer-events-auto border-4 border-white"
                             >
                                 <i data-lucide="camera" className="w-8 h-8"></i>
                             </button>
