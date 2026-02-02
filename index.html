@@ -17,7 +17,6 @@
         }
         .scan-line { animation: scan 2s linear infinite; background: linear-gradient(to bottom, transparent, #3b82f6); height: 4px; width: 100%; }
         body { background-color: #f8fafc; color: #1e293b; margin: 0; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
-        video { object-fit: cover; width: 100%; height: 100%; border-radius: 2rem; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
@@ -27,10 +26,154 @@
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
+        // --- 獨立的相機元件 (解決白畫面問題的核心) ---
+        const CameraScanner = ({ onCapture, onCancel }) => {
+            const videoRef = useRef(null);
+            const streamRef = useRef(null);
+            const [error, setError] = useState(null);
+            const [isReady, setIsReady] = useState(false);
+
+            useEffect(() => {
+                let mounted = true;
+
+                const startCamera = async () => {
+                    try {
+                        // 優先使用後置鏡頭 environment
+                        const constraints = { 
+                            video: { facingMode: "environment" } 
+                        };
+                        
+                        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                        
+                        if (!mounted) {
+                            // 如果元件已經卸載，停止串流
+                            stream.getTracks().forEach(track => track.stop());
+                            return;
+                        }
+
+                        streamRef.current = stream;
+                        
+                        if (videoRef.current) {
+                            videoRef.current.srcObject = stream;
+                            // 加上 playsInline 屬性並強制播放，解決 iOS 黑屏/白屏
+                            videoRef.current.setAttribute("playsinline", true); 
+                            await videoRef.current.play();
+                            setIsReady(true);
+                        }
+                    } catch (err) {
+                        console.error("Camera Init Error:", err);
+                        if (mounted) setError("無法啟動相機，請檢查權限");
+                    }
+                };
+
+                startCamera();
+
+                // 清理函數：當離開畫面時關閉相機
+                return () => {
+                    mounted = false;
+                    if (streamRef.current) {
+                        streamRef.current.getTracks().forEach(track => track.stop());
+                    }
+                };
+            }, []);
+
+            const handleCapture = () => {
+                if (videoRef.current) {
+                    const video = videoRef.current;
+                    const canvas = document.createElement("canvas");
+                    
+                    // 確保捕捉到的尺寸是影片的原始尺寸
+                    let width = video.videoWidth;
+                    let height = video.videoHeight;
+                    
+                    // 若讀取不到尺寸，給予預設值 (避免錯誤)
+                    if (width === 0 || height === 0) {
+                        width = 1280; height = 720;
+                    }
+
+                    // 智慧縮放：避免圖片過大導致 AI 處理超時
+                    const maxDim = 1024;
+                    if (width > maxDim || height > maxDim) {
+                        const ratio = Math.min(maxDim / width, maxDim / height);
+                        width *= ratio;
+                        height *= ratio;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext("2d");
+                    ctx.drawImage(video, 0, 0, width, height);
+                    
+                    // 輸出圖片
+                    const base64 = canvas.toDataURL("image/jpeg", 0.8);
+                    onCapture(base64);
+                }
+            };
+
+            return (
+                <div className="h-full flex flex-col gap-6 animate-in slide-in-from-bottom-4 duration-300">
+                    <div className="flex-1 bg-black rounded-[2.5rem] overflow-hidden relative shadow-2xl border-4 border-white">
+                        {/* 影片元素：背景設為黑色避免白屏 */}
+                        <video 
+                            ref={videoRef} 
+                            playsInline 
+                            muted 
+                            autoPlay 
+                            className="w-full h-full object-cover bg-black" 
+                        />
+                        
+                        {/* 載入中提示 */}
+                        {!isReady && !error && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black z-20">
+                                <p className="text-white/70 text-sm animate-pulse">正在啟動鏡頭...</p>
+                            </div>
+                        )}
+
+                        {/* 錯誤提示 */}
+                        {error && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black z-20">
+                                <p className="text-red-400 text-sm px-6 text-center">{error}</p>
+                            </div>
+                        )}
+
+                        {/* 掃描框 UI */}
+                        {isReady && (
+                            <div className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none z-10">
+                                <div className="w-full aspect-[1.6/1] border-2 border-blue-400/80 rounded-2xl relative shadow-[0_0_0_1000px_rgba(0,0,0,0.6)]">
+                                    <div className="scan-line absolute top-0"></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {isReady && (
+                            <div className="absolute bottom-6 w-full text-center z-10">
+                                <span className="px-4 py-2 bg-black/60 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest border border-white/10">
+                                    請將名片放入框內
+                                </span>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex justify-center gap-10 items-center pb-8">
+                        <button onClick={onCancel} className="text-gray-400 font-bold uppercase text-xs p-4">取消</button>
+                        <button 
+                            onClick={handleCapture} 
+                            disabled={!isReady}
+                            className={`w-20 h-20 bg-white rounded-full border-[6px] border-blue-100 p-1 transition-transform shadow-xl ${isReady ? 'active:scale-90' : 'opacity-50 cursor-not-allowed'}`}
+                        >
+                            <div className="w-full h-full bg-blue-600 rounded-full flex items-center justify-center text-white">
+                                <i data-lucide="camera" className="w-8 h-8"></i>
+                            </div>
+                        </button>
+                        <div className="w-12"></div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 主程式 ---
         function App() {
-            // --- 狀態定義 ---
             const [view, setView] = useState("home"); // home, scan, result, settings
-            // 改用 LocalStorage 存取名片資料
             const [cards, setCards] = useState(() => {
                 const saved = localStorage.getItem("snapcard_local_cards");
                 return saved ? JSON.parse(saved) : [];
@@ -41,85 +184,37 @@
             const [status, setStatus] = useState("系統就緒");
             const [error, setError] = useState(null);
             
-            // API Key 管理
             const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem("snapcard_gemini_key") || "");
             const [tempKeyInput, setTempKeyInput] = useState("");
 
-            const videoRef = useRef(null);
-            const canvasRef = useRef(null);
-
-            // 當 cards 變動時，同步存入 LocalStorage
+            // 同步存入 LocalStorage
             useEffect(() => {
                 localStorage.setItem("snapcard_local_cards", JSON.stringify(cards));
             }, [cards]);
 
-            // --- 1. 相機功能 ---
-            const startScan = async () => {
-                // 檢查是否有 API Key
+            // 進入掃描模式前的檢查
+            const handleStartScanClick = () => {
                 if (!customApiKey) {
                     setError("請先設定 API Key 才能進行辨識");
                     setView("settings");
                     return;
                 }
-
                 setView("scan");
-                setStatus("啟動相機...");
-                setError(null);
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
-                    });
-                    if (videoRef.current) {
-                        videoRef.current.srcObject = stream;
-                        await videoRef.current.play();
-                        setStatus("請對準名片");
-                    }
-                } catch (e) {
-                    setError("相機啟動失敗，請確認權限");
-                    setView("home");
-                }
             };
 
-            const capture = () => {
-                const video = videoRef.current;
-                const canvas = canvasRef.current;
-                if (video && canvas) {
-                    let width = video.videoWidth;
-                    let height = video.videoHeight;
-                    const maxDim = 1024;
-                    // 縮放圖片以加速 AI 處理
-                    if (width > maxDim || height > maxDim) {
-                        const ratio = Math.min(maxDim / width, maxDim / height);
-                        width *= ratio;
-                        height *= ratio;
-                    }
-
-                    canvas.width = width;
-                    canvas.height = height;
-                    canvas.getContext('2d').drawImage(video, 0, 0, width, height);
-                    
-                    const base64 = canvas.toDataURL('image/jpeg', 0.8);
-                    setCapturedImage(base64);
-                    
-                    const stream = video.srcObject;
-                    if (stream) stream.getTracks().forEach(t => t.stop());
-                    
-                    analyze(base64);
-                }
+            // 處理拍照後的回調
+            const handleImageCaptured = (base64) => {
+                setCapturedImage(base64);
+                setView("home"); // 先暫時切回 home 避免相機佔用，但這會被 Loading 遮罩蓋住
+                analyze(base64);
             };
 
-            // --- 2. AI 辨識 (使用 Gemini Vision) ---
+            // AI 辨識
             const analyze = async (image) => {
                 setIsProcessing(true);
                 setStatus("AI 正在閱讀名片...");
                 setError(null);
                 
-                if (!customApiKey) {
-                    setError("缺少 API Key");
-                    setIsProcessing(false);
-                    return;
-                }
-
                 const prompt = `請分析這張名片圖片，並以純 JSON 格式回傳以下欄位資料：
                 {
                     "name": "姓名",
@@ -174,8 +269,8 @@
 
                     } catch (e) {
                         console.error("Analysis failed", e);
-                        if (retry < 2) { 
-                            setStatus(`連線不穩，重試中 (${retry + 1}/2)...`);
+                        if (retry < 1) { 
+                            setStatus(`連線不穩，重試中...`);
                             await new Promise(r => setTimeout(r, 1000));
                             return fetchWithRetry(retry + 1);
                         }
@@ -185,11 +280,11 @@
                              msg = "API Key 無效，請檢查設定";
                              setView("settings");
                         } else {
-                             // 若失敗，保留在畫面讓用戶重試
+                             setError(`辨識失敗: ${msg}`);
+                             // 辨識失敗，清除圖片回到首頁
                              setCapturedImage(null);
-                             startScan(); 
+                             setView("home");
                         }
-                        setError(`辨識失敗: ${msg}`);
                     } finally {
                         setIsProcessing(false);
                     }
@@ -198,21 +293,15 @@
                 fetchWithRetry();
             };
 
-            // --- 3. 本地儲存與管理 ---
             const saveCard = () => {
                 if (!resultData) return;
-                
                 const newCard = {
-                    id: Date.now(), // 使用時間戳當 ID
+                    id: Date.now(),
                     ...resultData,
                     createdAt: Date.now(),
                     image: capturedImage 
                 };
-
-                const newCards = [newCard, ...cards];
-                setCards(newCards);
-                // 這裡會觸發 useEffect 自動存入 localStorage
-
+                setCards([newCard, ...cards]);
                 setResultData(null);
                 setCapturedImage(null);
                 setView("home");
@@ -221,8 +310,7 @@
 
             const deleteCard = (id) => {
                 if(confirm("確定要刪除這張名片嗎？")) {
-                    const newCards = cards.filter(c => c.id !== id);
-                    setCards(newCards);
+                    setCards(cards.filter(c => c.id !== id));
                 }
             };
 
@@ -237,7 +325,6 @@
                 setError(null);
             };
 
-            // --- UI 渲染 ---
             return (
                 <div className="max-w-md mx-auto h-screen bg-gray-50 flex flex-col font-sans overflow-hidden border-x border-gray-200 shadow-2xl">
                     
@@ -247,13 +334,15 @@
                             <h1 className="text-2xl font-black text-blue-600 tracking-tighter">SNAPCARD</h1>
                             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{status} <span className="text-blue-400 ml-1">(單機版)</span></p>
                         </div>
-                        <button onClick={() => setView(view === "settings" ? "home" : "settings")} className="p-2 text-gray-400 hover:text-blue-600">
-                            <i data-lucide={view === "settings" ? "x" : "settings"} className="w-5 h-5"></i>
-                        </button>
+                        {view !== "scan" && (
+                            <button onClick={() => setView(view === "settings" ? "home" : "settings")} className="p-2 text-gray-400 hover:text-blue-600">
+                                <i data-lucide={view === "settings" ? "x" : "settings"} className="w-5 h-5"></i>
+                            </button>
+                        )}
                     </header>
 
                     <main className="flex-1 overflow-y-auto p-6 hide-scrollbar relative">
-                        {error && (
+                        {error && view !== "scan" && (
                             <div className="mb-4 p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-bold flex items-center gap-2 animate-pulse">
                                 <i data-lucide="alert-triangle" className="w-4 h-4"></i> {error}
                             </div>
@@ -308,11 +397,10 @@
                                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                                     <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                                         <i data-lucide="key" className="w-5 h-5 text-blue-600"></i>
-                                        API 設定 (第一步)
+                                        API 設定
                                     </h3>
                                     <p className="text-xs text-gray-500 mb-4 leading-relaxed">
-                                        本應用程式需要 Google Gemini API Key 才能運作。
-                                        請點擊下方連結取得免費 Key，然後貼在下方欄位。
+                                        請貼上您的 Google Gemini API Key 以啟用辨識功能。
                                         <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-blue-600 underline block mt-2 font-bold p-2 bg-blue-50 rounded-lg text-center">
                                             取得免費 API Key &rarr;
                                         </a>
@@ -330,40 +418,15 @@
                                     >
                                         儲存設定
                                     </button>
-                                    {customApiKey && (
-                                        <p className="text-center text-[10px] text-green-500 mt-3 font-bold flex items-center justify-center gap-1">
-                                            <i data-lucide="check-circle" className="w-3 h-3"></i> 目前已設定 API Key
-                                        </p>
-                                    )}
                                 </div>
                             </div>
                         )}
 
                         {view === "scan" && (
-                            <div className="h-full flex flex-col gap-6 animate-in slide-in-from-bottom-4 duration-300">
-                                <div className="flex-1 bg-black rounded-[2.5rem] overflow-hidden relative shadow-2xl border-4 border-white">
-                                    <video ref={videoRef} playsInline muted autoPlay className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none">
-                                        <div className="w-full aspect-[1.6/1] border-2 border-blue-400/80 rounded-2xl relative shadow-[0_0_0_1000px_rgba(0,0,0,0.6)]">
-                                            <div className="scan-line absolute top-0"></div>
-                                        </div>
-                                    </div>
-                                    <div className="absolute bottom-6 w-full text-center">
-                                        <span className="px-4 py-2 bg-black/60 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest border border-white/10">
-                                            請將名片放入框內
-                                        </span>
-                                    </div>
-                                </div>
-                                <div className="flex justify-center gap-10 items-center pb-8">
-                                    <button onClick={() => setView("home")} className="text-gray-400 font-bold uppercase text-xs p-4">取消</button>
-                                    <button onClick={capture} className="w-20 h-20 bg-white rounded-full border-[6px] border-blue-100 p-1 active:scale-90 transition-transform shadow-xl">
-                                        <div className="w-full h-full bg-blue-600 rounded-full flex items-center justify-center text-white">
-                                            <i data-lucide="camera" className="w-8 h-8"></i>
-                                        </div>
-                                    </button>
-                                    <div className="w-12"></div>
-                                </div>
-                            </div>
+                            <CameraScanner 
+                                onCapture={handleImageCaptured} 
+                                onCancel={() => setView("home")} 
+                            />
                         )}
 
                         {view === "result" && resultData && (
@@ -412,7 +475,6 @@
                                             </div>
                                         ))}
                                     </div>
-                                    <p className="text-[10px] text-gray-300 text-center mt-6">點擊文字可直接編輯修正</p>
                                 </div>
                                 
                                 <div className="fixed bottom-0 left-0 w-full p-6 bg-white/90 backdrop-blur-md border-t border-gray-200 flex flex-col gap-3 z-20">
@@ -421,7 +483,7 @@
                                         className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-200/50 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
                                     >
                                         <i data-lucide="check-circle-2" className="w-5 h-5"></i>
-                                        確認並儲存 (本機)
+                                        確認並儲存
                                     </button>
                                     <button 
                                         onClick={() => { setView("home"); setCapturedImage(null); }}
@@ -441,7 +503,7 @@
                                 <i data-lucide="gallery-vertical-end" className="w-6 h-6"></i>
                             </div>
                             <button 
-                                onClick={startScan}
+                                onClick={handleStartScanClick}
                                 className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white -mt-12 border-8 border-white shadow-2xl shadow-blue-300 active:scale-90 transition-transform"
                             >
                                 <i data-lucide="scan-line" className="w-7 h-7"></i>
@@ -454,8 +516,6 @@
                             </button>
                         </nav>
                     )}
-
-                    <canvas ref={canvasRef} className="hidden"></canvas>
                     
                     {/* 讀取畫面 */}
                     {isProcessing && (
@@ -466,7 +526,7 @@
                                 <i data-lucide="sparkles" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 opacity-80"></i>
                             </div>
                             <p className="font-black tracking-[0.2em] uppercase text-lg">AI 深度解析中</p>
-                            <p className="text-white/60 text-xs mt-2 font-medium">正在擷取聯絡資訊...</p>
+                            <p className="text-white/60 text-xs mt-2 font-medium">請保持網路暢通...</p>
                         </div>
                     )}
                 </div>
