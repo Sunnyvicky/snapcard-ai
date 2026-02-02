@@ -27,6 +27,7 @@
             height: 100%;
             object-fit: cover;
             z-index: 10;
+            transform: scaleX(1); /* 確保後鏡頭不鏡像 */
         }
     </style>
 </head>
@@ -36,7 +37,7 @@
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
-        // --- 獨立的相機元件 (核彈級相容版) ---
+        // --- 獨立的相機元件 (後鏡頭修正版) ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [debugMsg, setDebugMsg] = useState("初始化中...");
@@ -54,10 +55,13 @@
 
                     try {
                         setDebugMsg("請求權限中...");
-                        // 核彈級解法：不指定 facingMode，先求有再求好
-                        // 這樣可以避免某些舊 iPhone 因為找不到 "environment" 而報錯
+                        
+                        // 修正重點：指定 ideal: "environment" 以優先使用後鏡頭
+                        // 使用 ideal 而非 exact 可以增加相容性，避免在找不到後鏡頭時直接報錯
                         const stream = await navigator.mediaDevices.getUserMedia({ 
-                            video: true,
+                            video: { 
+                                facingMode: { ideal: "environment" } 
+                            },
                             audio: false 
                         });
                         
@@ -66,12 +70,12 @@
                         
                         if (videoRef.current) {
                             videoRef.current.srcObject = stream;
-                            // 嘗試多種方式觸發播放
+                            // 保持之前的暴力播放邏輯，確保畫面一定會出來
                             videoRef.current.onloadedmetadata = () => {
                                 setDebugMsg("載入元數據，嘗試播放...");
                                 videoRef.current.play()
                                     .then(() => {
-                                        setDebugMsg("播放成功 (系統正常)");
+                                        setDebugMsg(""); // 成功後清空訊息
                                         setHasStream(true);
                                     })
                                     .catch(e => setDebugMsg("播放失敗: " + e.message));
@@ -94,21 +98,24 @@
             const handleCapture = () => {
                 if (videoRef.current) {
                     const canvas = document.createElement("canvas");
-                    canvas.width = videoRef.current.videoWidth || 640;
-                    canvas.height = videoRef.current.videoHeight || 480;
+                    canvas.width = videoRef.current.videoWidth || 1280;
+                    canvas.height = videoRef.current.videoHeight || 720;
                     canvas.getContext("2d").drawImage(videoRef.current, 0, 0);
-                    onCapture(canvas.toDataURL("image/jpeg", 0.8));
+                    // 稍微提高圖片品質以利辨識
+                    onCapture(canvas.toDataURL("image/jpeg", 0.9));
                 }
             };
 
             return (
                 <div className="fixed inset-0 bg-black z-50 flex flex-col">
-                    {/* 診斷訊息 (紅字) */}
-                    <div className="absolute top-4 left-0 w-full text-center z-50 pointer-events-none">
-                        <span className="bg-black/50 text-red-400 text-xs px-2 py-1 rounded font-mono">
-                            狀態: {debugMsg}
-                        </span>
-                    </div>
+                    {/* 診斷訊息 (紅字) - 有錯誤才顯示 */}
+                    {debugMsg && (
+                        <div className="absolute top-4 left-0 w-full text-center z-50 pointer-events-none">
+                            <span className="bg-black/50 text-red-400 text-xs px-2 py-1 rounded font-mono">
+                                {debugMsg}
+                            </span>
+                        </div>
+                    )}
 
                     <div className="flex-1 relative overflow-hidden">
                         {/* 影片元件 */}
@@ -120,12 +127,15 @@
                             className="bg-gray-900"
                         />
                         
-                        {/* 掃描框 (只有在成功獲取串流後才顯示，避免遮擋錯誤) */}
+                        {/* 掃描框 (只有在成功獲取串流後才顯示) */}
                         {hasStream && (
                             <div className="absolute inset-0 flex items-center justify-center p-12 pointer-events-none z-20">
                                 <div className="w-full aspect-[1.6/1] border-2 border-blue-500 rounded-xl relative shadow-[0_0_0_999px_rgba(0,0,0,0.5)]">
                                     <div className="scan-line absolute top-0 left-0 w-full h-1 bg-blue-400"></div>
                                 </div>
+                                <p className="absolute bottom-20 text-white/80 text-sm font-bold bg-black/30 px-3 py-1 rounded-full">
+                                    請將名片放入框內
+                                </p>
                             </div>
                         )}
                     </div>
@@ -134,8 +144,10 @@
                         <button onClick={onCancel} className="text-gray-400 font-bold p-4">取消</button>
                         <button 
                             onClick={handleCapture}
-                            className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 active:scale-95 transition-transform"
-                        ></button>
+                            className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 active:scale-95 transition-transform flex items-center justify-center"
+                        >
+                            <div className="w-14 h-14 bg-white rounded-full border-2 border-black/10"></div>
+                        </button>
                         <div className="w-12"></div>
                     </div>
                 </div>
@@ -216,7 +228,7 @@
                                 ) : (
                                     cards.map(c => (
                                         <div key={c.id} className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center">
-                                            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-500 shrink-0">
+                                            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-500 shrink-0 overflow-hidden">
                                                 {c.name?.[0]}
                                             </div>
                                             <div className="min-w-0 flex-1">
@@ -250,17 +262,24 @@
                         {view === "result" && resultData && (
                             <div className="space-y-4">
                                 <div className="bg-white p-6 rounded-2xl shadow-lg border-t-4 border-blue-500">
-                                    <h2 className="text-2xl font-black text-gray-800">{resultData.name}</h2>
-                                    <p className="text-blue-500 font-bold text-sm mb-4">{resultData.jobTitle}</p>
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xl">
+                                            {resultData.name?.[0]}
+                                        </div>
+                                        <div>
+                                            <h2 className="text-xl font-black text-gray-800">{resultData.name}</h2>
+                                            <p className="text-blue-500 font-bold text-sm">{resultData.jobTitle}</p>
+                                        </div>
+                                    </div>
                                     <div className="space-y-2 text-sm text-gray-600">
-                                        <p>🏢 {resultData.company}</p>
-                                        <p>📱 {resultData.phone}</p>
-                                        <p>✉️ {resultData.email}</p>
-                                        <p>📍 {resultData.address}</p>
+                                        <p className="flex gap-2"><i data-lucide="building" className="w-4 h-4"></i> {resultData.company}</p>
+                                        <p className="flex gap-2"><i data-lucide="phone" className="w-4 h-4"></i> {resultData.phone}</p>
+                                        <p className="flex gap-2"><i data-lucide="mail" className="w-4 h-4"></i> {resultData.email}</p>
+                                        <p className="flex gap-2"><i data-lucide="map-pin" className="w-4 h-4"></i> {resultData.address}</p>
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button onClick={saveCard} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-bold">儲存</button>
+                                    <button onClick={saveCard} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-bold flex justify-center items-center gap-2"><i data-lucide="save" className="w-4 h-4"></i> 儲存</button>
                                     <button onClick={() => setView("home")} className="flex-1 bg-gray-200 text-gray-600 p-3 rounded-xl font-bold">放棄</button>
                                 </div>
                             </div>
