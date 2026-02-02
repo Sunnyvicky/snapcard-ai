@@ -26,86 +26,76 @@
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
-        // --- 獨立的相機元件 (解決白畫面問題的核心) ---
+        // --- 獨立的相機元件 (極簡穩定版) ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
-            const streamRef = useRef(null);
             const [error, setError] = useState(null);
             const [isReady, setIsReady] = useState(false);
 
             useEffect(() => {
-                let mounted = true;
+                let currentStream = null;
 
-                const startCamera = async () => {
+                const enableCamera = async () => {
+                    setError(null);
+                    setIsReady(false);
+
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        setError("您的瀏覽器不支援相機功能");
+                        return;
+                    }
+
                     try {
-                        // 優先使用後置鏡頭 environment
-                        const constraints = { 
-                            video: { facingMode: "environment" } 
-                        };
+                        // 最基礎的設定，相容性最高
+                        const stream = await navigator.mediaDevices.getUserMedia({
+                            video: { 
+                                facingMode: "environment" // 嘗試後鏡頭
+                            },
+                            audio: false
+                        });
                         
-                        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                        
-                        if (!mounted) {
-                            // 如果元件已經卸載，停止串流
-                            stream.getTracks().forEach(track => track.stop());
-                            return;
-                        }
-
-                        streamRef.current = stream;
+                        currentStream = stream;
                         
                         if (videoRef.current) {
                             videoRef.current.srcObject = stream;
-                            // 加上 playsInline 屬性並強制播放，解決 iOS 黑屏/白屏
-                            videoRef.current.setAttribute("playsinline", true); 
-                            await videoRef.current.play();
-                            setIsReady(true);
+                            // 注意：不手動 call play()，依靠 autoPlay 屬性
                         }
                     } catch (err) {
-                        console.error("Camera Init Error:", err);
-                        if (mounted) setError("無法啟動相機，請檢查權限");
+                        console.error("Camera Error:", err);
+                        setError("無法啟動相機：" + err.message);
                     }
                 };
 
-                startCamera();
+                enableCamera();
 
-                // 清理函數：當離開畫面時關閉相機
                 return () => {
-                    mounted = false;
-                    if (streamRef.current) {
-                        streamRef.current.getTracks().forEach(track => track.stop());
+                    if (currentStream) {
+                        currentStream.getTracks().forEach(track => track.stop());
                     }
                 };
             }, []);
 
+            const handleVideoReady = () => {
+                setIsReady(true);
+            };
+
             const handleCapture = () => {
-                if (videoRef.current) {
+                if (videoRef.current && isReady) {
                     const video = videoRef.current;
                     const canvas = document.createElement("canvas");
                     
-                    // 確保捕捉到的尺寸是影片的原始尺寸
-                    let width = video.videoWidth;
-                    let height = video.videoHeight;
-                    
-                    // 若讀取不到尺寸，給予預設值 (避免錯誤)
-                    if (width === 0 || height === 0) {
-                        width = 1280; height = 720;
-                    }
+                    // 取得實際視訊尺寸
+                    const width = video.videoWidth;
+                    const height = video.videoHeight;
 
-                    // 智慧縮放：避免圖片過大導致 AI 處理超時
-                    const maxDim = 1024;
-                    if (width > maxDim || height > maxDim) {
-                        const ratio = Math.min(maxDim / width, maxDim / height);
-                        width *= ratio;
-                        height *= ratio;
-                    }
-
+                    // 設定 Canvas 尺寸
                     canvas.width = width;
                     canvas.height = height;
+                    
                     const ctx = canvas.getContext("2d");
                     ctx.drawImage(video, 0, 0, width, height);
                     
-                    // 輸出圖片
-                    const base64 = canvas.toDataURL("image/jpeg", 0.8);
+                    // 輸出高品質 JPEG
+                    const base64 = canvas.toDataURL("image/jpeg", 0.9);
                     onCapture(base64);
                 }
             };
@@ -113,44 +103,50 @@
             return (
                 <div className="h-full flex flex-col gap-6 animate-in slide-in-from-bottom-4 duration-300">
                     <div className="flex-1 bg-black rounded-[2.5rem] overflow-hidden relative shadow-2xl border-4 border-white">
-                        {/* 影片元素：背景設為黑色避免白屏 */}
+                        
+                        {/* 關鍵修改：加上 playsInline, autoPlay, muted */}
                         <video 
                             ref={videoRef} 
+                            autoPlay 
                             playsInline 
                             muted 
-                            autoPlay 
-                            className="w-full h-full object-cover bg-black" 
+                            onLoadedMetadata={handleVideoReady}
+                            className={`w-full h-full object-cover transition-opacity duration-500 ${isReady ? 'opacity-100' : 'opacity-0'}`}
                         />
                         
                         {/* 載入中提示 */}
                         {!isReady && !error && (
                             <div className="absolute inset-0 flex items-center justify-center bg-black z-20">
-                                <p className="text-white/70 text-sm animate-pulse">正在啟動鏡頭...</p>
+                                <div className="flex flex-col items-center gap-2">
+                                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                    <p className="text-white/70 text-sm">啟動鏡頭中...</p>
+                                </div>
                             </div>
                         )}
 
                         {/* 錯誤提示 */}
                         {error && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black z-20">
-                                <p className="text-red-400 text-sm px-6 text-center">{error}</p>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-20 p-6 text-center">
+                                <i data-lucide="camera-off" className="w-10 h-10 text-red-500 mb-2"></i>
+                                <p className="text-red-400 text-sm">{error}</p>
+                                <button onClick={onCancel} className="mt-4 px-4 py-2 bg-white/10 rounded-lg text-white text-xs">返回</button>
                             </div>
                         )}
 
-                        {/* 掃描框 UI */}
+                        {/* 掃描框 UI (只在準備好時顯示) */}
                         {isReady && (
-                            <div className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none z-10">
-                                <div className="w-full aspect-[1.6/1] border-2 border-blue-400/80 rounded-2xl relative shadow-[0_0_0_1000px_rgba(0,0,0,0.6)]">
-                                    <div className="scan-line absolute top-0"></div>
+                            <>
+                                <div className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none z-10">
+                                    <div className="w-full aspect-[1.6/1] border-2 border-blue-400/80 rounded-2xl relative shadow-[0_0_0_1000px_rgba(0,0,0,0.6)]">
+                                        <div className="scan-line absolute top-0"></div>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-
-                        {isReady && (
-                            <div className="absolute bottom-6 w-full text-center z-10">
-                                <span className="px-4 py-2 bg-black/60 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest border border-white/10">
-                                    請將名片放入框內
-                                </span>
-                            </div>
+                                <div className="absolute bottom-6 w-full text-center z-10">
+                                    <span className="px-4 py-2 bg-black/60 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest border border-white/10">
+                                        請將名片放入框內
+                                    </span>
+                                </div>
+                            </>
                         )}
                     </div>
 
@@ -526,7 +522,7 @@
                                 <i data-lucide="sparkles" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 opacity-80"></i>
                             </div>
                             <p className="font-black tracking-[0.2em] uppercase text-lg">AI 深度解析中</p>
-                            <p className="text-white/60 text-xs mt-2 font-medium">請保持網路暢通...</p>
+                            <p className="text-white/60 text-xs mt-2 font-medium">正在擷取聯絡資訊...</p>
                         </div>
                     )}
                 </div>
