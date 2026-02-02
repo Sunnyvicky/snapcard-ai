@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SnapCard AI - 最終修正版</title>
+    <title>SnapCard AI - 專業人脈管家</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -58,14 +58,12 @@
                         
                         let stream;
                         try {
-                            // 策略 1: 強制指定後鏡頭 (可能在某些裝置失敗)
                             stream = await navigator.mediaDevices.getUserMedia({ 
                                 video: { facingMode: { exact: "environment" } },
                                 audio: false 
                             });
                         } catch (err) {
                             console.warn("Exact environment failed, retrying with ideal...", err);
-                            // 策略 2: 退回理想設定 (相容性較高)
                             stream = await navigator.mediaDevices.getUserMedia({ 
                                 video: { facingMode: "environment" },
                                 audio: false 
@@ -77,12 +75,11 @@
                         
                         if (videoRef.current) {
                             videoRef.current.srcObject = stream;
-                            // 保持暴力播放邏輯，確保畫面一定會出來
                             videoRef.current.onloadedmetadata = () => {
                                 setDebugMsg("載入元數據，嘗試播放...");
                                 videoRef.current.play()
                                     .then(() => {
-                                        setDebugMsg(""); // 成功後清空訊息
+                                        setDebugMsg(""); 
                                         setHasStream(true);
                                     })
                                     .catch(e => setDebugMsg("播放失敗: " + e.message));
@@ -108,14 +105,12 @@
                     canvas.width = videoRef.current.videoWidth || 1280;
                     canvas.height = videoRef.current.videoHeight || 720;
                     canvas.getContext("2d").drawImage(videoRef.current, 0, 0);
-                    // 稍微提高圖片品質以利辨識
                     onCapture(canvas.toDataURL("image/jpeg", 0.9));
                 }
             };
 
             return (
                 <div className="fixed inset-0 bg-black z-50 flex flex-col">
-                    {/* 診斷訊息 (紅字) - 有錯誤才顯示 */}
                     {debugMsg && (
                         <div className="absolute top-4 left-0 w-full text-center z-50 pointer-events-none">
                             <span className="bg-black/50 text-red-400 text-xs px-2 py-1 rounded font-mono">
@@ -125,7 +120,6 @@
                     )}
 
                     <div className="flex-1 relative overflow-hidden">
-                        {/* 影片元件 */}
                         <video 
                             ref={videoRef} 
                             autoPlay 
@@ -134,7 +128,6 @@
                             className="bg-gray-900"
                         />
                         
-                        {/* 掃描框 (只有在成功獲取串流後才顯示) */}
                         {hasStream && (
                             <div className="absolute inset-0 flex items-center justify-center p-12 pointer-events-none z-20">
                                 <div className="w-full aspect-[1.6/1] border-2 border-blue-500 rounded-xl relative shadow-[0_0_0_999px_rgba(0,0,0,0.5)]">
@@ -163,13 +156,13 @@
 
         // --- 主程式 ---
         function App() {
-            const [view, setView] = useState("home"); // home, scan, result, settings
+            const [view, setView] = useState("home"); 
             const [cards, setCards] = useState(() => JSON.parse(localStorage.getItem("snapcard_local_cards") || "[]"));
             const [capturedImage, setCapturedImage] = useState(null);
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState(null);
             const [error, setError] = useState(null);
-            const [currentCardId, setCurrentCardId] = useState(null); // 新增：用於判斷是「新掃描」還是「查看舊卡片」
+            const [currentCardId, setCurrentCardId] = useState(null);
             
             const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem("snapcard_gemini_key") || "");
             const [tempKeyInput, setTempKeyInput] = useState("");
@@ -181,7 +174,8 @@
                 setError(null);
                 
                 try {
-                    const prompt = `分析名片，回傳JSON：{"name":"","jobTitle":"","company":"","phone":"","email":"","address":""}。無Markdown。`;
+                    // 更新 Prompt: 加入 category 欄位
+                    const prompt = `分析名片，回傳JSON：{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作"}。category請從[工作, 家人, 同學, 朋友]中選擇最合適的，預設為工作。無Markdown。`;
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${customApiKey}`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -197,7 +191,12 @@
                     text = text.replace(/```json|```/g, '').trim();
                     const start = text.indexOf('{');
                     const end = text.lastIndexOf('}');
-                    setResultData(JSON.parse(text.substring(start, end + 1)));
+                    
+                    const data = JSON.parse(text.substring(start, end + 1));
+                    // 確保有預設分類
+                    if (!data.category) data.category = "工作";
+                    
+                    setResultData(data);
                     setView("result");
                 } catch (e) {
                     setError("辨識失敗: " + e.message);
@@ -208,12 +207,25 @@
             };
 
             const saveCard = () => {
-                setCards([{ id: Date.now(), ...resultData, image: capturedImage }, ...cards]);
+                if (currentCardId) {
+                    // 更新現有名片
+                    setCards(cards.map(c => c.id === currentCardId ? { ...c, ...resultData, image: capturedImage || c.image } : c));
+                } else {
+                    // 新增名片
+                    setCards([{ id: Date.now(), ...resultData, image: capturedImage, category: resultData.category || "工作" }, ...cards]);
+                }
                 cleanupAndHome();
             };
 
+            const deleteCurrentCard = () => {
+                if(confirm("確定要刪除這張名片嗎？")) {
+                    setCards(cards.filter(c => c.id !== currentCardId));
+                    cleanupAndHome();
+                }
+            };
+
             const viewSavedCard = (card) => {
-                setResultData(card);
+                setResultData({...card}); // 複製一份以免直接修改 state
                 setCapturedImage(card.image);
                 setCurrentCardId(card.id);
                 setView("result");
@@ -224,6 +236,16 @@
                 setCapturedImage(null);
                 setResultData(null);
                 setCurrentCardId(null);
+            };
+
+            // 分類顏色映射
+            const getCategoryColor = (cat) => {
+                switch(cat) {
+                    case '家人': return 'bg-pink-100 text-pink-600';
+                    case '同學': return 'bg-green-100 text-green-600';
+                    case '朋友': return 'bg-orange-100 text-orange-600';
+                    default: return 'bg-blue-100 text-blue-600';
+                }
             };
 
             return (
@@ -258,12 +280,17 @@
                                                 {c.image ? <img src={c.image} className="w-full h-full object-cover" /> : c.name?.[0]}
                                             </div>
                                             <div className="min-w-0 flex-1">
-                                                <div className="font-bold truncate text-gray-800">{c.name}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="font-bold truncate text-gray-800">{c.name}</div>
+                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${getCategoryColor(c.category)}`}>
+                                                        {c.category || '工作'}
+                                                    </span>
+                                                </div>
                                                 <div className="text-xs text-gray-400 truncate">{c.company}</div>
                                             </div>
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); if(confirm("確定刪除?")) setCards(cards.filter(x => x.id !== c.id)); }} 
-                                                className="p-2 text-gray-300 hover:text-red-500"
+                                                className="p-3 -mr-2 text-gray-300 hover:text-red-500"
                                             >
                                                 <i data-lucide="trash-2" className="w-4 h-4"></i>
                                             </button>
@@ -313,6 +340,24 @@
                                         </div>
                                     </div>
                                     <div className="space-y-3 text-sm text-gray-600">
+                                        {/* 新增：分類下拉選單 */}
+                                        <div className="flex items-center gap-3 border-b border-gray-50 pb-2">
+                                            <i data-lucide="tag" className="w-4 h-4 text-gray-400 shrink-0"></i>
+                                            <div className="flex-1">
+                                                <p className="text-[10px] text-gray-400 font-bold uppercase">分類</p>
+                                                <select
+                                                    className="w-full font-medium text-gray-800 bg-transparent focus:outline-none py-1"
+                                                    value={resultData.category || "工作"}
+                                                    onChange={(e) => setResultData({...resultData, category: e.target.value})}
+                                                >
+                                                    <option value="工作">工作</option>
+                                                    <option value="家人">家人</option>
+                                                    <option value="同學">同學</option>
+                                                    <option value="朋友">朋友</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
                                         {[
                                             { icon: "building", label: "公司", key: "company" },
                                             { icon: "phone", label: "電話", key: "phone" },
@@ -337,10 +382,18 @@
                                     <p className="text-center text-[10px] text-gray-300 mt-4">點擊文字即可進行編輯修正</p>
                                 </div>
                                 
-                                {/* 按鈕區：根據是否為已儲存的卡片顯示不同按鈕 */}
-                                <div className="fixed bottom-0 left-0 w-full p-4 bg-white border-t flex gap-2 z-30">
+                                {/* 按鈕區 */}
+                                <div className="fixed bottom-0 left-0 w-full p-4 bg-white border-t flex gap-2 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
                                     {currentCardId ? (
-                                        <button onClick={cleanupAndHome} className="w-full bg-gray-800 text-white p-3 rounded-xl font-bold">返回列表</button>
+                                        <>
+                                            <button onClick={cleanupAndHome} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">返回</button>
+                                            <button onClick={deleteCurrentCard} className="flex-1 bg-red-50 text-red-500 p-3 rounded-xl font-bold flex justify-center items-center gap-2">
+                                                <i data-lucide="trash-2" className="w-4 h-4"></i> 刪除
+                                            </button>
+                                            <button onClick={saveCard} className="flex-[2] bg-blue-600 text-white p-3 rounded-xl font-bold flex justify-center items-center gap-2">
+                                                <i data-lucide="save" className="w-4 h-4"></i> 更新
+                                            </button>
+                                        </>
                                     ) : (
                                         <>
                                             <button onClick={cleanupAndHome} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">放棄</button>
