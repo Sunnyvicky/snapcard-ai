@@ -10,25 +10,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        @keyframes scan {
-            0% { transform: translateY(0); opacity: 0; }
-            50% { opacity: 1; }
-            100% { transform: translateY(220px); opacity: 0; }
-        }
-        .scan-line { animation: scan 2s linear infinite; background: linear-gradient(to bottom, transparent, #3b82f6); height: 4px; width: 100%; }
         body { background-color: #f8fafc; color: #1e293b; margin: 0; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
-        /* 強制影片滿版且最上層 */
-        video {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            z-index: 10;
-            transform: scaleX(1); /* 確保後鏡頭不鏡像 */
-        }
     </style>
 </head>
 <body>
@@ -37,110 +20,123 @@
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
-        // --- 獨立的相機元件 (強制後鏡頭版) ---
+        // --- 圖片壓縮工具 (防止記憶體溢出導致白屏的核心) ---
+        const compressImage = (fileOrBlob) => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(fileOrBlob);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800; // 限制最大寬度，大幅節省記憶體
+                        const scaleSize = MAX_WIDTH / img.width;
+                        
+                        // 如果圖片不需要壓縮，就稍微調整
+                        const width = (img.width > MAX_WIDTH) ? MAX_WIDTH : img.width;
+                        const height = (img.width > MAX_WIDTH) ? (img.height * scaleSize) : img.height;
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // 輸出壓縮後的 base64
+                        resolve(canvas.toDataURL('image/jpeg', 0.7)); 
+                    };
+                };
+            });
+        };
+
+        // --- 獨立的相機元件 ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
-            const [debugMsg, setDebugMsg] = useState("初始化中...");
+            const [debugMsg, setDebugMsg] = useState("啟動中...");
             const [hasStream, setHasStream] = useState(false);
 
             useEffect(() => {
                 let localStream = null;
 
                 const init = async () => {
-                    setDebugMsg("檢查硬體支援...");
                     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                        setDebugMsg("錯誤：瀏覽器不支援相機 API");
+                        setDebugMsg("錯誤：不支援相機");
                         return;
                     }
 
                     try {
-                        setDebugMsg("請求後鏡頭權限...");
-                        let stream;
-                        try {
-                            stream = await navigator.mediaDevices.getUserMedia({ 
-                                video: { facingMode: { exact: "environment" } },
-                                audio: false 
-                            });
-                        } catch (err) {
-                            console.warn("Retrying with ideal environment...", err);
-                            stream = await navigator.mediaDevices.getUserMedia({ 
-                                video: { facingMode: "environment" },
-                                audio: false 
-                            });
-                        }
+                        setDebugMsg("請求權限...");
+                        // 使用 ideal 設定，增加相容性
+                        const stream = await navigator.mediaDevices.getUserMedia({ 
+                            video: { facingMode: { ideal: "environment" } },
+                            audio: false 
+                        });
                         
-                        setDebugMsg("已取得權限，準備串流...");
                         localStream = stream;
                         
                         if (videoRef.current) {
                             videoRef.current.srcObject = stream;
-                            videoRef.current.onloadedmetadata = () => {
-                                setDebugMsg("載入元數據，嘗試播放...");
-                                videoRef.current.play()
-                                    .then(() => {
-                                        setDebugMsg(""); 
-                                        setHasStream(true);
-                                    })
-                                    .catch(e => setDebugMsg("播放失敗: " + e.message));
-                            };
+                            // 強制播放
+                            videoRef.current.play().then(() => {
+                                setDebugMsg("");
+                                setHasStream(true);
+                            }).catch(e => {
+                                setDebugMsg("播放失敗: " + e.message);
+                            });
                         }
                     } catch (err) {
-                        setDebugMsg("致命錯誤: " + err.name + " - " + err.message);
+                        setDebugMsg("相機錯誤: " + err.message);
                     }
                 };
 
                 init();
 
                 return () => {
-                    if (localStream) {
-                        localStream.getTracks().forEach(t => t.stop());
-                    }
+                    if (localStream) localStream.getTracks().forEach(t => t.stop());
                 };
             }, []);
 
             const handleCapture = () => {
                 if (videoRef.current) {
                     const canvas = document.createElement("canvas");
-                    canvas.width = videoRef.current.videoWidth || 1280;
-                    canvas.height = videoRef.current.videoHeight || 720;
+                    canvas.width = videoRef.current.videoWidth || 640;
+                    canvas.height = videoRef.current.videoHeight || 480;
                     canvas.getContext("2d").drawImage(videoRef.current, 0, 0);
-                    onCapture(canvas.toDataURL("image/jpeg", 0.9));
+                    // 拍照時也進行壓縮
+                    const base64 = canvas.toDataURL("image/jpeg", 0.7);
+                    onCapture(base64);
                 }
             };
 
             return (
                 <div className="fixed inset-0 bg-black z-50 flex flex-col">
                     {debugMsg && (
-                        <div className="absolute top-4 left-0 w-full text-center z-50 pointer-events-none">
-                            <span className="bg-black/50 text-red-400 text-xs px-2 py-1 rounded font-mono">
-                                {debugMsg}
-                            </span>
+                        <div className="absolute top-4 left-0 w-full text-center z-50">
+                            <span className="bg-black/70 text-white text-xs px-2 py-1 rounded">{debugMsg}</span>
                         </div>
                     )}
 
-                    <div className="flex-1 relative overflow-hidden">
-                        <video ref={videoRef} autoPlay playsInline muted className="bg-gray-900" />
+                    <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-black">
+                        <video 
+                            ref={videoRef} 
+                            autoPlay 
+                            playsInline 
+                            muted 
+                            className="absolute inset-0 w-full h-full object-cover"
+                        />
                         
-                        {hasStream && (
-                            <div className="absolute inset-0 flex items-center justify-center p-12 pointer-events-none z-20">
-                                <div className="w-full aspect-[1.6/1] border-2 border-blue-500 rounded-xl relative shadow-[0_0_0_999px_rgba(0,0,0,0.5)]">
-                                    <div className="scan-line absolute top-0 left-0 w-full h-1 bg-blue-400"></div>
-                                </div>
-                                <p className="absolute bottom-20 text-white/80 text-sm font-bold bg-black/30 px-3 py-1 rounded-full">
-                                    請將名片放入框內
-                                </p>
-                            </div>
-                        )}
+                        {/* 掃描框 */}
+                        <div className="relative w-3/4 aspect-[1.6/1] border-2 border-blue-500 rounded-xl shadow-[0_0_0_999px_rgba(0,0,0,0.5)] z-10 pointer-events-none">
+                            <div className="absolute top-0 left-0 w-full h-0.5 bg-blue-400 animate-pulse"></div>
+                        </div>
                     </div>
 
-                    <div className="h-32 bg-black flex items-center justify-center gap-12 z-50 relative">
+                    <div className="h-32 bg-black flex items-center justify-center gap-12 z-50">
                         <button onClick={onCancel} className="text-gray-400 font-bold p-4">取消</button>
                         <button 
                             onClick={handleCapture}
-                            className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 active:scale-95 transition-transform flex items-center justify-center"
-                        >
-                            <div className="w-14 h-14 bg-white rounded-full border-2 border-black/10"></div>
-                        </button>
+                            className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 active:scale-95 transition-transform"
+                        ></button>
                         <div className="w-12"></div>
                     </div>
                 </div>
@@ -151,8 +147,8 @@
         function App() {
             const [view, setView] = useState("home"); 
             const [cards, setCards] = useState(() => JSON.parse(localStorage.getItem("snapcard_local_cards") || "[]"));
-            const [capturedImage, setCapturedImage] = useState(null); // 名片原圖
-            const [currentAvatar, setCurrentAvatar] = useState(null); // 新增：頭像
+            const [capturedImage, setCapturedImage] = useState(null);
+            const [currentAvatar, setCurrentAvatar] = useState(null);
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState(null);
             const [error, setError] = useState(null);
@@ -164,11 +160,7 @@
             const avatarInputRef = useRef(null);
 
             useEffect(() => localStorage.setItem("snapcard_local_cards", JSON.stringify(cards)), [cards]);
-
-            // 強制刷新圖示
-            useEffect(() => {
-                lucide.createIcons();
-            }, [view, cards, resultData, filterCategory, currentAvatar]);
+            useEffect(() => lucide.createIcons(), [view, cards, resultData, filterCategory, currentAvatar]);
 
             const analyze = async (image) => {
                 setIsProcessing(true);
@@ -196,7 +188,6 @@
                     if (!data.category) data.category = "工作";
                     
                     setResultData(data);
-                    // 掃描新名片時，頭像預設為空，等待用戶上傳
                     setCurrentAvatar(null); 
                     setView("result");
                 } catch (e) {
@@ -210,8 +201,8 @@
             const saveCard = () => {
                 const cardData = {
                     ...resultData,
-                    image: capturedImage, // 名片原圖
-                    avatar: currentAvatar, // 頭像
+                    image: capturedImage, 
+                    avatar: currentAvatar,
                     category: resultData.category || "工作"
                 };
 
@@ -233,7 +224,7 @@
             const viewSavedCard = (card) => {
                 setResultData({...card});
                 setCapturedImage(card.image);
-                setCurrentAvatar(card.avatar); // 載入頭像
+                setCurrentAvatar(card.avatar);
                 setCurrentCardId(card.id);
                 setView("result");
             };
@@ -246,15 +237,16 @@
                 setCurrentCardId(null);
             };
 
-            // 處理頭像上傳
-            const handleAvatarUpload = (e) => {
+            // 修正後的頭像上傳：加入壓縮邏輯
+            const handleAvatarUpload = async (e) => {
                 const file = e.target.files[0];
                 if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        setCurrentAvatar(reader.result);
-                    };
-                    reader.readAsDataURL(file);
+                    try {
+                        const compressedBase64 = await compressImage(file);
+                        setCurrentAvatar(compressedBase64);
+                    } catch (err) {
+                        alert("圖片處理失敗，請重試");
+                    }
                 }
             };
 
@@ -273,13 +265,11 @@
 
             return (
                 <div className="max-w-md mx-auto h-screen bg-gray-50 flex flex-col font-sans overflow-hidden">
-                    {/* Header */}
                     <header className="px-6 pt-12 pb-2 bg-white shadow-sm flex justify-between items-center z-10">
                         <h1 className="text-xl font-black text-blue-600">SNAPCARD</h1>
                         <button onClick={() => setView("settings")}><i data-lucide="settings" className="w-5 h-5 text-gray-400"></i></button>
                     </header>
 
-                    {/* Main Content */}
                     <main className="flex-1 overflow-y-auto p-4 relative">
                         {error && <div className="bg-red-100 text-red-600 p-3 rounded-lg mb-4 text-xs font-bold">{error}</div>}
 
@@ -291,7 +281,6 @@
                                     </div>
                                 )}
 
-                                {/* 分類過濾器 */}
                                 <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar">
                                     {["全部", "工作", "家人", "同學", "朋友"].map(cat => (
                                         <button
@@ -310,7 +299,7 @@
 
                                 {filteredCards.length === 0 ? (
                                     <div className="text-center py-20 text-gray-400 text-sm">
-                                        {cards.length === 0 ? "暫無名片，請點擊下方按鈕新增" : "此分類下沒有名片"}
+                                        {cards.length === 0 ? "暫無名片" : "此分類下沒有名片"}
                                     </div>
                                 ) : (
                                     filteredCards.map(c => (
@@ -319,7 +308,6 @@
                                             onClick={() => viewSavedCard(c)}
                                             className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform border border-transparent hover:border-blue-100"
                                         >
-                                            {/* 列表頭像：優先顯示 avatar，沒有則顯示首字 */}
                                             <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center font-bold text-gray-500 shrink-0 overflow-hidden border border-gray-200">
                                                 {c.avatar ? (
                                                     <img src={c.avatar} className="w-full h-full object-cover" />
@@ -369,7 +357,6 @@
                             <div className="space-y-4 pb-32">
                                 <div className="bg-white p-6 rounded-2xl shadow-lg border-t-4 border-blue-500 relative">
                                     <div className="flex items-center gap-4 mb-6">
-                                        {/* 頭像上傳區 */}
                                         <div 
                                             className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center text-blue-300 font-bold text-2xl overflow-hidden border-4 border-white shadow-md shrink-0 cursor-pointer relative group"
                                             onClick={() => avatarInputRef.current?.click()}
@@ -379,7 +366,6 @@
                                             ) : (
                                                 <i data-lucide="camera" className="w-8 h-8"></i>
                                             )}
-                                            {/* 遮罩提示 */}
                                             <div className="absolute inset-0 bg-black/20 hidden group-hover:flex items-center justify-center">
                                                 <i data-lucide="upload" className="w-6 h-6 text-white"></i>
                                             </div>
@@ -452,7 +438,6 @@
                                     </div>
                                 </div>
 
-                                {/* 名片原圖展示區 */}
                                 {capturedImage && (
                                     <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
                                         <p className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
@@ -462,7 +447,6 @@
                                     </div>
                                 )}
                                 
-                                {/* 底部操作按鈕區 */}
                                 <div className="fixed bottom-0 left-0 w-full p-4 bg-white border-t flex gap-2 z-30 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
                                     {currentCardId ? (
                                         <>
@@ -487,7 +471,6 @@
                         )}
                     </main>
 
-                    {/* Footer Fab (僅首頁顯示) */}
                     {view === "home" && (
                         <div className="fixed bottom-6 left-0 w-full flex justify-center pointer-events-none">
                             <button 
@@ -518,7 +501,6 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
-        // 初始圖示渲染
         setTimeout(() => lucide.createIcons(), 500);
     </script>
 </body>
