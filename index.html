@@ -3,20 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SnapCard AI - 專業人脈管家</title>
+    <title>SnapCard AI - 單機測試版</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        window.fb = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, getFirestore, collection, addDoc, onSnapshot, query, doc, deleteDoc };
-    </script>
     <style>
         @keyframes scan {
             0% { transform: translateY(0); opacity: 0; }
@@ -35,16 +27,14 @@
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
-        // 預設環境變數 (通常在 GitHub Pages 上會是空的)
-        const defaultApiKey = ""; 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'snapcard-ai-pro';
-        const firebaseConfig = JSON.parse(__firebase_config);
-
         function App() {
             // --- 狀態定義 ---
             const [view, setView] = useState("home"); // home, scan, result, settings
-            const [user, setUser] = useState(null);
-            const [cards, setCards] = useState([]);
+            // 改用 LocalStorage 存取名片資料
+            const [cards, setCards] = useState(() => {
+                const saved = localStorage.getItem("snapcard_local_cards");
+                return saved ? JSON.parse(saved) : [];
+            });
             const [capturedImage, setCapturedImage] = useState(null);
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState(null);
@@ -57,52 +47,16 @@
 
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
-            const dbRef = useRef(null);
 
-            // --- 1. Firebase 初始化與認證 ---
+            // 當 cards 變動時，同步存入 LocalStorage
             useEffect(() => {
-                const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore } = window.fb;
-                const app = initializeApp(firebaseConfig);
-                const auth = getAuth(app);
-                dbRef.current = getFirestore(app);
+                localStorage.setItem("snapcard_local_cards", JSON.stringify(cards));
+            }, [cards]);
 
-                const initAuth = async () => {
-                    try {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
-                    } catch (e) {
-                        console.error("Auth error", e);
-                    }
-                };
-                initAuth();
-
-                const unsubscribe = onAuthStateChanged(auth, (u) => {
-                    setUser(u);
-                });
-                return () => unsubscribe();
-            }, []);
-
-            // --- 2. 監聽名片資料 (Firestore) ---
-            useEffect(() => {
-                if (!user || !dbRef.current) return;
-                const { collection, onSnapshot } = window.fb;
-                const cardsCol = collection(dbRef.current, 'artifacts', appId, 'users', user.uid, 'cards');
-                
-                const unsubscribe = onSnapshot(cardsCol, (snapshot) => {
-                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setCards(data.sort((a, b) => b.createdAt - a.createdAt));
-                }, (err) => setError("讀取資料失敗"));
-
-                return () => unsubscribe();
-            }, [user]);
-
-            // --- 3. 相機功能 ---
+            // --- 1. 相機功能 ---
             const startScan = async () => {
                 // 檢查是否有 API Key
-                if (!defaultApiKey && !customApiKey) {
+                if (!customApiKey) {
                     setError("請先設定 API Key 才能進行辨識");
                     setView("settings");
                     return;
@@ -133,6 +87,7 @@
                     let width = video.videoWidth;
                     let height = video.videoHeight;
                     const maxDim = 1024;
+                    // 縮放圖片以加速 AI 處理
                     if (width > maxDim || height > maxDim) {
                         const ratio = Math.min(maxDim / width, maxDim / height);
                         width *= ratio;
@@ -153,14 +108,13 @@
                 }
             };
 
-            // --- 4. AI 辨識 (使用 Gemini Vision 作為 OCR) ---
+            // --- 2. AI 辨識 (使用 Gemini Vision) ---
             const analyze = async (image) => {
                 setIsProcessing(true);
                 setStatus("AI 正在閱讀名片...");
                 setError(null);
                 
-                const activeKey = customApiKey || defaultApiKey;
-                if (!activeKey) {
+                if (!customApiKey) {
                     setError("缺少 API Key");
                     setIsProcessing(false);
                     return;
@@ -190,7 +144,7 @@
 
                 const fetchWithRetry = async (retry = 0) => {
                     try {
-                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${activeKey}`, {
+                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${customApiKey}`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify(payload)
@@ -220,20 +174,22 @@
 
                     } catch (e) {
                         console.error("Analysis failed", e);
-                        if (retry < 2) { // 減少重試次數以避免等待過久
+                        if (retry < 2) { 
                             setStatus(`連線不穩，重試中 (${retry + 1}/2)...`);
                             await new Promise(r => setTimeout(r, 1000));
                             return fetchWithRetry(retry + 1);
                         }
-                        setError(`辨識失敗: ${e.message}`);
-                        setCapturedImage(null);
-                        // 如果是因為 key 問題，引導去設定
-                        if (e.message.includes("400") || e.message.includes("403") || e.message.includes("API key")) {
-                             setError("API Key 無效或過期，請重新設定");
+                        
+                        let msg = e.message;
+                        if (msg.includes("400") || msg.includes("API key")) {
+                             msg = "API Key 無效，請檢查設定";
                              setView("settings");
                         } else {
+                             // 若失敗，保留在畫面讓用戶重試
+                             setCapturedImage(null);
                              startScan(); 
                         }
+                        setError(`辨識失敗: ${msg}`);
                     } finally {
                         setIsProcessing(false);
                     }
@@ -242,39 +198,41 @@
                 fetchWithRetry();
             };
 
-            // --- 5. 儲存與管理 ---
-            const saveCard = async () => {
-                if (!user || !resultData) return;
-                const { collection, addDoc } = window.fb;
-                try {
-                    setStatus("儲存中...");
-                    const cardsCol = collection(dbRef.current, 'artifacts', appId, 'users', user.uid, 'cards');
-                    await addDoc(cardsCol, {
-                        ...resultData,
-                        createdAt: Date.now(),
-                        image: capturedImage 
-                    });
-                    setResultData(null);
-                    setCapturedImage(null);
-                    setView("home");
-                    setStatus("已儲存");
-                } catch (e) {
-                    setError("儲存失敗，請檢查網路");
-                }
+            // --- 3. 本地儲存與管理 ---
+            const saveCard = () => {
+                if (!resultData) return;
+                
+                const newCard = {
+                    id: Date.now(), // 使用時間戳當 ID
+                    ...resultData,
+                    createdAt: Date.now(),
+                    image: capturedImage 
+                };
+
+                const newCards = [newCard, ...cards];
+                setCards(newCards);
+                // 這裡會觸發 useEffect 自動存入 localStorage
+
+                setResultData(null);
+                setCapturedImage(null);
+                setView("home");
+                setStatus("已儲存 (本機)");
             };
 
-            const deleteCard = async (id) => {
-                const { doc, deleteDoc } = window.fb;
+            const deleteCard = (id) => {
                 if(confirm("確定要刪除這張名片嗎？")) {
-                    try {
-                        await deleteDoc(doc(dbRef.current, 'artifacts', appId, 'users', user.uid, 'cards', id));
-                    } catch (e) { setError("刪除失敗"); }
+                    const newCards = cards.filter(c => c.id !== id);
+                    setCards(newCards);
                 }
             };
 
             const saveSettings = () => {
-                localStorage.setItem("snapcard_gemini_key", tempKeyInput);
-                setCustomApiKey(tempKeyInput);
+                if (!tempKeyInput.trim()) {
+                    setError("API Key 不能為空");
+                    return;
+                }
+                localStorage.setItem("snapcard_gemini_key", tempKeyInput.trim());
+                setCustomApiKey(tempKeyInput.trim());
                 setView("home");
                 setError(null);
             };
@@ -287,7 +245,7 @@
                     <header className="px-6 pt-12 pb-4 bg-white shadow-sm flex justify-between items-end z-10">
                         <div>
                             <h1 className="text-2xl font-black text-blue-600 tracking-tighter">SNAPCARD</h1>
-                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{status}</p>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{status} <span className="text-blue-400 ml-1">(單機版)</span></p>
                         </div>
                         <button onClick={() => setView(view === "settings" ? "home" : "settings")} className="p-2 text-gray-400 hover:text-blue-600">
                             <i data-lucide={view === "settings" ? "x" : "settings"} className="w-5 h-5"></i>
@@ -313,9 +271,9 @@
                                         </div>
                                         <p className="text-gray-500 font-bold text-sm">您的名片盒是空的</p>
                                         <p className="text-gray-400 text-xs mt-1">點擊下方相機按鈕開始</p>
-                                        {!customApiKey && !defaultApiKey && (
-                                            <p className="text-red-400 text-xs mt-4 font-bold bg-red-50 px-3 py-1 rounded-full animate-bounce" onClick={() => setView("settings")}>
-                                                ⚠️ 請先設定 API Key
+                                        {!customApiKey && (
+                                            <p className="text-red-500 text-xs mt-4 font-bold bg-red-50 px-4 py-2 rounded-full animate-bounce cursor-pointer border border-red-100" onClick={() => setView("settings")}>
+                                                👉 第一步：點此設定 API Key
                                             </p>
                                         )}
                                     </div>
@@ -350,18 +308,18 @@
                                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                                     <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                                         <i data-lucide="key" className="w-5 h-5 text-blue-600"></i>
-                                        API 設定
+                                        API 設定 (第一步)
                                     </h3>
                                     <p className="text-xs text-gray-500 mb-4 leading-relaxed">
-                                        本應用程式使用 Google Gemini Vision 進行 AI OCR 辨識。
-                                        請輸入您的 Gemini API Key 以啟用功能。
-                                        <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-blue-600 underline block mt-2 font-bold">
+                                        本應用程式需要 Google Gemini API Key 才能運作。
+                                        請點擊下方連結取得免費 Key，然後貼在下方欄位。
+                                        <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-blue-600 underline block mt-2 font-bold p-2 bg-blue-50 rounded-lg text-center">
                                             取得免費 API Key &rarr;
                                         </a>
                                     </p>
                                     <input 
                                         type="password" 
-                                        placeholder="貼上您的 API Key"
+                                        placeholder="貼上您的 AIza... 金鑰"
                                         className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 font-mono"
                                         value={tempKeyInput}
                                         onChange={(e) => setTempKeyInput(e.target.value)}
@@ -373,8 +331,8 @@
                                         儲存設定
                                     </button>
                                     {customApiKey && (
-                                        <p className="text-center text-[10px] text-green-500 mt-3 font-bold">
-                                            ✓ 目前已設定 API Key
+                                        <p className="text-center text-[10px] text-green-500 mt-3 font-bold flex items-center justify-center gap-1">
+                                            <i data-lucide="check-circle" className="w-3 h-3"></i> 目前已設定 API Key
                                         </p>
                                     )}
                                 </div>
@@ -463,7 +421,7 @@
                                         className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-200/50 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
                                     >
                                         <i data-lucide="check-circle-2" className="w-5 h-5"></i>
-                                        確認並儲存
+                                        確認並儲存 (本機)
                                     </button>
                                     <button 
                                         onClick={() => { setView("home"); setCapturedImage(null); }}
@@ -492,7 +450,7 @@
                                 onClick={() => setView("settings")}
                                 className="flex flex-col items-center text-gray-300 p-2"
                             >
-                                <i data-lucide="user" className="w-6 h-6"></i>
+                                <i data-lucide="settings" className="w-6 h-6"></i>
                             </button>
                         </nav>
                     )}
