@@ -41,7 +41,7 @@
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
 
-            // 啟動相機 (使用驗證過的穩定邏輯)
+            // 啟動相機 (提升解析度至 1080p)
             const startCamera = async () => {
                 setStatus("正在請求相機權限...");
                 setError(null);
@@ -51,8 +51,8 @@
                     const constraints = { 
                         video: { 
                             facingMode: { ideal: "environment" },
-                            width: { ideal: 1280 },
-                            height: { ideal: 720 }
+                            width: { ideal: 1920 }, // 提升至 Full HD
+                            height: { ideal: 1080 }
                         } 
                     };
 
@@ -60,11 +60,10 @@
                     
                     if (videoRef.current) {
                         videoRef.current.srcObject = stream;
-                        // iOS 必須在取得串流後立即嘗試播放
                         videoRef.current.onloadedmetadata = () => {
                             videoRef.current.play().catch(e => console.error("Play failed", e));
                             setIsScanning(true);
-                            setStatus("相機運作中");
+                            setStatus("相機運作中 (1080P)");
                         };
                     }
                 } catch (err) {
@@ -73,17 +72,19 @@
                 }
             };
 
-            // 拍照功能
+            // 拍照功能 (確保擷取最高畫質)
             const takePhoto = () => {
                 const video = videoRef.current;
                 const canvas = canvasRef.current;
                 if (video && canvas) {
                     const ctx = canvas.getContext('2d');
+                    // 根據影片流的實際大小設定畫布，確保照片不縮水
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    // 壓縮圖片體積以加快傳輸速度
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                    
+                    // 使用較高品質的 JPEG
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
                     setCapturedImage(dataUrl);
                     setIsScanning(false);
                     
@@ -92,13 +93,13 @@
                 }
             };
 
-            // AI 辨識邏輯 (實作指數退避重試演算法)
+            // AI 辨識邏輯 (優化指令與解析)
             const analyzeImage = async (base64Data) => {
                 setIsProcessing(true);
                 setStatus("AI 辨識中...");
                 setError(null);
 
-                const prompt = "你是一位專業的名片秘書。請精確分析這張名片圖片，並以繁體中文回傳一個 JSON 物件。欄位必須包含：name (姓名), jobTitle (職稱), company (公司名稱), phone (電話), email (電子郵件), address (地址)。如果找不到資訊，請回傳空字串。只回傳 JSON 物件。";
+                const prompt = "你是一位專業的名片秘書。請仔細分析這張名片圖片中的文字。如果是名片，請以繁體中文回傳一個 JSON 物件。欄位必須包含：name (姓名), jobTitle (職稱), company (公司名稱), phone (電話), email (電子郵件), address (地址)。請忽略無關的雜訊，如果找不到該欄位資訊請回傳空字串。只回傳 JSON 物件，嚴禁包含 ```json 等任何額外文字。";
                 
                 const payload = {
                     contents: [{
@@ -131,24 +132,27 @@
                                 await new Promise(r => setTimeout(r, delays[retryCount]));
                                 return callApiWithRetry(retryCount + 1);
                             }
-                            throw new Error(`API 伺服器忙碌中 (${response.status})`);
+                            throw new Error(`伺服器忙碌中 (${response.status})`);
                         }
 
                         const result = await response.json();
                         const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
                         
-                        if (!text) throw new Error("AI 無法理解圖片內容，請嘗試拍得更清晰一點。");
+                        if (!text) throw new Error("AI 無法識別內容，請嘗試更換背景或補光。");
                         
-                        const parsedData = JSON.parse(text);
+                        // 強化解析 logic: 移除潛在的雜訊
+                        const cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
+                        const parsedData = JSON.parse(cleanedText);
+                        
                         setResultData(parsedData);
-                        setStatus("辨識完成");
+                        setStatus("辨識成功");
                     } catch (err) {
                         if (retryCount < 5) {
                             await new Promise(r => setTimeout(r, delays[retryCount]));
                             return callApiWithRetry(retryCount + 1);
                         }
-                        setError(`辨識失敗: ${err.message}`);
-                        setStatus("辨識出錯");
+                        setError(`辨識出錯: ${err.message}`);
+                        setStatus("辨識失敗");
                     } finally {
                         setIsProcessing(false);
                     }
@@ -170,10 +174,10 @@
                     <div className="p-4 bg-black/90 flex justify-between items-center z-20 border-b border-white/5">
                         <div className="flex flex-col">
                             <h1 className="text-blue-500 font-black text-sm tracking-tighter italic">SNAPCARD AI</h1>
-                            <span className="text-[9px] text-gray-500 font-mono uppercase tracking-[0.2em]">{status}</span>
+                            <span className="text-[9px] text-gray-400 font-mono uppercase tracking-[0.2em]">{status}</span>
                         </div>
                         {error && (
-                            <div className="bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/20 text-red-500 text-[10px] font-bold max-w-[60%] flex items-center gap-2 animate-pulse">
+                            <div className="bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/20 text-red-500 text-[10px] font-bold max-w-[60%] flex items-center gap-2">
                                 <i data-lucide="alert-circle" className="w-3 h-3"></i>
                                 <span className="truncate">{error}</span>
                             </div>
@@ -188,33 +192,36 @@
                                 playsInline 
                                 muted 
                                 autoPlay 
-                                className="h-full w-full object-cover opacity-80" 
+                                className="h-full w-full object-cover" 
                             />
                         ) : capturedImage && !resultData ? (
-                            <img src={capturedImage} className="max-h-full max-w-full object-contain" alt="Captured" />
+                            <div className="w-full h-full flex items-center justify-center bg-black p-4">
+                                <img src={capturedImage} className="max-w-full max-h-full object-contain rounded-xl shadow-2xl border-2 border-white/10" alt="Captured" />
+                            </div>
                         ) : null}
 
                         {/* 掃描對焦框 */}
                         {isScanning && (
-                            <div className="absolute inset-0 flex items-center justify-center p-12 pointer-events-none z-10">
-                                <div className="w-full aspect-[1.6/1] border-2 border-blue-500/30 rounded-2xl relative overflow-hidden shadow-[0_0_0_2000px_rgba(0,0,0,0.7)]">
+                            <div className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none z-10">
+                                <div className="w-full aspect-[1.5/1] border-2 border-blue-500/30 rounded-3xl relative overflow-hidden shadow-[0_0_0_2000px_rgba(0,0,0,0.7)]">
                                     <div className="scan-line absolute top-0"></div>
-                                    <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-blue-500"></div>
-                                    <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-blue-500"></div>
-                                    <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-blue-500"></div>
-                                    <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-blue-500"></div>
+                                    <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-xl"></div>
+                                    <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-xl"></div>
+                                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-500 rounded-bl-xl"></div>
+                                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-500 rounded-br-xl"></div>
                                 </div>
                             </div>
                         )}
 
                         {/* AI 處理中動畫 */}
                         {isProcessing && (
-                            <div className="absolute inset-0 bg-blue-600/20 backdrop-blur-2xl flex flex-col items-center justify-center text-white z-30 animate-in fade-in duration-500">
-                                <div className="relative w-20 h-20 mb-6">
-                                    <div className="absolute inset-0 border-4 border-white/10 rounded-full"></div>
-                                    <div className="absolute inset-0 border-4 border-t-blue-400 rounded-full animate-spin"></div>
+                            <div className="absolute inset-0 bg-blue-600/30 backdrop-blur-3xl flex flex-col items-center justify-center text-white z-30 animate-in fade-in duration-500">
+                                <div className="relative w-24 h-24 mb-6">
+                                    <div className="absolute inset-0 border-8 border-white/10 rounded-full"></div>
+                                    <div className="absolute inset-0 border-8 border-t-blue-400 rounded-full animate-spin"></div>
                                 </div>
-                                <p className="font-bold tracking-widest uppercase text-sm animate-pulse">正在精準解析名片內容...</p>
+                                <p className="font-bold tracking-[0.2em] uppercase text-sm">正在深度解析名片內容...</p>
+                                <p className="text-[10px] text-white/50 mt-2">請保持網路暢通</p>
                             </div>
                         )}
 
@@ -223,7 +230,7 @@
                             <div className="absolute inset-0 z-40 flex flex-col result-panel animate-in slide-in-from-bottom-full duration-700 overflow-hidden">
                                 <div className="p-10 flex-1 overflow-y-auto">
                                     <div className="flex items-center gap-6 mb-12">
-                                        <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-blue-700 rounded-3xl flex items-center justify-center text-white font-black text-3xl shadow-2xl shadow-blue-200 ring-4 ring-white">
+                                        <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-blue-700 rounded-[2rem] flex items-center justify-center text-white font-black text-3xl shadow-2xl shadow-blue-200 ring-4 ring-white">
                                             {resultData.name?.[0] || "👤"}
                                         </div>
                                         <div className="flex-1">
@@ -253,7 +260,7 @@
                                 </div>
                                 <div className="p-8 bg-white border-t border-gray-100 flex flex-col gap-4 shadow-[0_-20px_50px_rgba(0,0,0,0.08)]">
                                     <button 
-                                        onClick={() => alert("儲存功能即將推出：即將整合雲端資料庫！")}
+                                        onClick={() => alert("儲存功能即將推出！")}
                                         className="w-full bg-blue-600 text-white py-5 rounded-[2.5rem] font-bold shadow-2xl shadow-blue-200 flex items-center justify-center gap-3 active:scale-[0.97] transition-all"
                                     >
                                         <i data-lucide="check" className="w-6 h-6"></i>
