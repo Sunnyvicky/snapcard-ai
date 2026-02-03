@@ -159,7 +159,7 @@
         };
 
         function App() {
-            const [view, setView] = useState("home"); // home, scan, check_scans, result, settings
+            const [view, setView] = useState("home");
             const [cards, setCards] = useState(() => {
                 try { return JSON.parse(localStorage.getItem("snapcard_cards") || "[]"); } catch { return []; }
             });
@@ -217,7 +217,8 @@
                         inlineData: { mimeType: "image/jpeg", data: img.split(',')[1] }
                     }));
 
-                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                    // 修正：使用 gemini-2.5-flash-preview-09-2025 以符合環境支援
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -231,8 +232,9 @@
                     });
                     
                     if (!res.ok) {
-                        if (res.status === 429) throw new Error("使用量達到上限，請稍後再試。");
-                        throw new Error(`API 錯誤 (${res.status})`);
+                        const errJson = await res.json().catch(() => ({}));
+                        if (res.status === 429) throw new Error("使用量達到上限，請等待約 1 分鐘後再試。");
+                        throw new Error(errJson.error?.message || `API 錯誤 (${res.status})`);
                     }
 
                     const json = await res.json();
@@ -339,6 +341,7 @@
                                     </div>
                                 )}
                                 
+                                {/* 搜尋列 */}
                                 <div className="relative">
                                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                                         <Icon name="search" size={16} />
@@ -351,7 +354,10 @@
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                     />
                                     {searchQuery && (
-                                        <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 p-1">
+                                        <button 
+                                            onClick={() => setSearchQuery("")}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 p-1"
+                                        >
                                             <Icon name="x" size={14} />
                                         </button>
                                     )}
@@ -359,7 +365,7 @@
 
                                 <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar">
                                     {["全部", "工作", "家人", "同學", "朋友"].map(cat => (
-                                        <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${filterCategory === cat ? "bg-blue-600 text-white" : "bg-white text-gray-500 border"}`}>
+                                        <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${filterCategory === cat ? "bg-blue-600 text-white shadow-sm" : "bg-white text-gray-500 border border-gray-100"}`}>
                                             {cat}
                                         </button>
                                     ))}
@@ -373,10 +379,10 @@
                                     filteredCards.map(c => (
                                         <div key={c.id} onClick={() => viewSavedCard(c)} className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform border border-transparent hover:border-blue-100">
                                             <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border shrink-0">
-                                                {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{(c.company || c.name)?.[0]}</span>}
+                                                {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="font-bold truncate text-gray-800">{c.company || "未填寫公司"}</div>
+                                                <div className="font-bold truncate">{c.company || "未填寫公司"}</div>
                                                 <div className="text-xs text-gray-400 truncate">{c.name}</div>
                                             </div>
                                             <button onClick={(e) => { e.stopPropagation(); if(confirm("刪除?")) setCards(cards.filter(x => x.id !== c.id)); }} className="text-gray-300 hover:text-red-500">
@@ -479,15 +485,14 @@
 
                                 {capturedImage && (
                                     <div className="bg-white p-4 rounded-xl shadow-sm">
-                                        <p className="text-xs font-bold text-gray-400 mb-2">正面名片</p>
+                                        <p className="text-xs font-bold text-gray-400 mb-2">名片快照</p>
                                         <img src={capturedImage} className="w-full rounded-lg" />
                                     </div>
                                 )}
 
-                                {/* 附加照片/背面名片區塊 */}
                                 <div className="bg-white p-4 rounded-xl shadow-sm">
                                     <div className="flex justify-between items-center mb-2">
-                                        <p className="text-xs font-bold text-gray-400">背面/附加照片</p>
+                                        <p className="text-xs font-bold text-gray-400">附加照片</p>
                                         <div className="flex gap-2">
                                             {secondImage && (
                                                 <button onClick={() => setSecondImage(null)} className="text-red-400 text-xs font-bold flex items-center gap-1">
