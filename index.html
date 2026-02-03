@@ -96,7 +96,7 @@
             return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center' }}></span>;
         };
 
-        // --- 極致安全壓縮 (Object URL) ---
+        // --- 極致安全壓縮 ---
         const compressImage = (file) => {
             return new Promise((resolve, reject) => {
                 if (!file) return reject("無檔案");
@@ -131,7 +131,7 @@
             });
         };
 
-        // --- 相機元件 (恢復掃描線版) ---
+        // --- 相機元件 ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [error, setError] = useState(null);
@@ -160,10 +160,44 @@
 
             const capture = () => {
                 if (!videoRef.current) return;
+                const video = videoRef.current;
                 const canvas = document.createElement("canvas");
-                canvas.width = videoRef.current.videoWidth;
-                canvas.height = videoRef.current.videoHeight;
-                canvas.getContext("2d").drawImage(videoRef.current, 0, 0);
+                
+                // 1. 計算裁切區域 (所見即所得)
+                const videoRatio = video.videoWidth / video.videoHeight;
+                const displayRatio = video.clientWidth / video.clientHeight;
+                
+                let sx = 0, sy = 0, sWidth = video.videoWidth, sHeight = video.videoHeight;
+
+                if (videoRatio > displayRatio) {
+                    // 影像比螢幕寬 => 裁掉左右
+                    sWidth = video.videoHeight * displayRatio;
+                    sx = (video.videoWidth - sWidth) / 2;
+                } else {
+                    // 影像比螢幕高 => 裁掉上下
+                    sHeight = video.videoWidth / displayRatio;
+                    sy = (video.videoHeight - sHeight) / 2;
+                }
+
+                // 2. 設定輸出尺寸 (維持記憶體安全限制)
+                const MAX_DIM = 1024;
+                let destWidth = sWidth;
+                let destHeight = sHeight;
+                
+                if (destWidth > MAX_DIM || destHeight > MAX_DIM) {
+                    const scale = Math.min(MAX_DIM / destWidth, MAX_DIM / destHeight);
+                    destWidth *= scale;
+                    destHeight *= scale;
+                }
+
+                canvas.width = destWidth;
+                canvas.height = destHeight;
+                
+                // 3. 繪製裁切後的影像
+                const ctx = canvas.getContext('2d');
+                // drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
+                ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, destWidth, destHeight);
+                
                 onCapture(canvas.toDataURL("image/jpeg", 0.6));
             };
 
@@ -206,10 +240,7 @@
             const [capturedImage, setCapturedImage] = useState(null); // 正面
             const [backImage, setBackImage] = useState(null); // 背面
             const [currentAvatar, setCurrentAvatar] = useState(null);
-            
-            // 統一變數名稱：使用 additionalImage
-            const [additionalImage, setAdditionalImage] = useState(null); 
-            
+            const [additionalImage, setAdditionalImage] = useState(null); // 附加
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState({});
             const [currentCardId, setCurrentCardId] = useState(null);
@@ -218,9 +249,8 @@
             const [tempKey, setTempKey] = useState("");
             const [error, setError] = useState(null);
             const [statusMsg, setStatusMsg] = useState("AI 辨識中...");
-            
             const avatarInputRef = useRef(null);
-            const additionalImageInputRef = useRef(null); // 使用 additionalImageInputRef
+            const secondImageInputRef = useRef(null); 
             const [searchQuery, setSearchQuery] = useState(""); 
 
             useEffect(() => {
@@ -374,8 +404,7 @@
                 }
             };
 
-            // 修正：統一使用 handleAdditionalImageUpload
-            const handleAdditionalImageUpload = async (e) => {
+            const handleSecondImageUpload = async (e) => {
                 if (e.target.files[0]) {
                     try {
                         const base64 = await compressImage(e.target.files[0]);
@@ -600,12 +629,12 @@
                                                     <Icon name="trash-2" size={14} /> 刪除
                                                 </button>
                                             )}
-                                            <button onClick={() => additionalImageInputRef.current?.click()} className="text-blue-500 text-xs font-bold flex items-center gap-1">
+                                            <button onClick={() => secondImageInputRef.current?.click()} className="text-blue-500 text-xs font-bold flex items-center gap-1">
                                                 <Icon name="image-plus" size={14} /> {additionalImage ? "更換" : "上傳"}
                                             </button>
                                         </div>
                                     </div>
-                                    <input type="file" ref={additionalImageInputRef} className="hidden" accept="image/*" onChange={handleAdditionalImageUpload} />
+                                    <input type="file" ref={secondImageInputRef} className="hidden" accept="image/*" onChange={handleSecondImageUpload} />
                                     {additionalImage ? (
                                         <div className="relative">
                                             <img src={additionalImage} className="w-full rounded-lg border border-gray-100" />
@@ -614,7 +643,7 @@
                                             </button>
                                         </div>
                                     ) : (
-                                        <div onClick={() => additionalImageInputRef.current?.click()} className="w-full h-32 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-300 cursor-pointer hover:bg-gray-100 transition-colors">
+                                        <div onClick={() => secondImageInputRef.current?.click()} className="w-full h-32 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-300 cursor-pointer hover:bg-gray-100 transition-colors">
                                             <Icon name="plus" size={24} />
                                             <span className="text-xs mt-1">點擊上傳</span>
                                         </div>
