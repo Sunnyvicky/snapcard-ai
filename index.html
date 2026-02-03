@@ -19,7 +19,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useRef, useEffect, Component } = React;
+        const { useState, useRef, useEffect, useMemo, Component } = React;
 
         // --- 錯誤邊界 ---
         class ErrorBoundary extends Component {
@@ -61,7 +61,7 @@
                     attrs: {
                         width: size,
                         height: size,
-                        class: className 
+                        class: className
                     }
                 });
             }, [name, size, className]);
@@ -159,13 +159,14 @@
         };
 
         function App() {
-            const [view, setView] = useState("home");
+            const [view, setView] = useState("home"); // home, scan, check_scans, result, settings
             const [cards, setCards] = useState(() => {
                 try { return JSON.parse(localStorage.getItem("snapcard_cards") || "[]"); } catch { return []; }
             });
-            const [capturedImage, setCapturedImage] = useState(null);
+            const [tempScans, setTempScans] = useState([]); // 暫存拍攝的照片 (支援正反面)
+            const [capturedImage, setCapturedImage] = useState(null); // 最終正面
             const [currentAvatar, setCurrentAvatar] = useState(null);
-            const [secondImage, setSecondImage] = useState(null); // 新增：第二張照片
+            const [secondImage, setSecondImage] = useState(null); // 最終背面/附加
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState({});
             const [currentCardId, setCurrentCardId] = useState(null);
@@ -174,7 +175,7 @@
             const [tempKey, setTempKey] = useState("");
             const [error, setError] = useState(null);
             const avatarInputRef = useRef(null);
-            const secondImageInputRef = useRef(null); // 新增：第二張照片的 ref
+            const secondImageInputRef = useRef(null);
             const [searchQuery, setSearchQuery] = useState(""); 
 
             useEffect(() => {
@@ -182,28 +183,56 @@
                 catch (e) { setError("儲存空間已滿"); }
             }, [cards]);
 
-            const analyze = async (base64) => {
+            // 強制刷新圖示
+            useEffect(() => {
+                const timer = setTimeout(() => {
+                    if (window.lucide) window.lucide.createIcons();
+                }, 50);
+                return () => clearTimeout(timer);
+            }, [view, cards, tempScans, resultData]);
+
+            // 開始掃描流程
+            const startScanFlow = () => {
+                if (!apiKey) {
+                    setView("settings");
+                    return;
+                }
+                setTempScans([]);
+                setView("scan");
+            };
+
+            // 處理拍照
+            const handleScanCapture = (base64) => {
+                const newScans = [...tempScans, base64];
+                setTempScans(newScans);
+                setView("check_scans");
+            };
+
+            // 呼叫 AI 辨識
+            const analyze = async () => {
                 setIsProcessing(true);
                 try {
-                    // 更新：改用 gemini-1.5-flash，免費額度限制較寬鬆
+                    // 準備圖片 payload
+                    const imageParts = tempScans.map(img => ({
+                        inlineData: { mimeType: "image/jpeg", data: img.split(',')[1] }
+                    }));
+
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            contents: [{ parts: [
-                                { text: `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。company欄位請包含中文及英文名稱(若有)。category從[工作,家人,同學,朋友]選。note欄位保留空白讓使用者填寫。無Markdown。` },
-                                { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }
-                            ] }]
+                            contents: [{ 
+                                parts: [
+                                    { text: `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。若有兩張圖代表正反面，請整合資訊。姓名若有中英文請合併(如: 王小明 David Wang)。公司名稱若有中英文請合併。category從[工作,家人,同學,朋友]選。無Markdown。` },
+                                    ...imageParts
+                                ] 
+                            }]
                         })
                     });
                     
                     if (!res.ok) {
-                        const errJson = await res.json().catch(() => ({}));
-                        // 特別處理 429 錯誤
-                        if (res.status === 429) {
-                            throw new Error("使用量達到上限，請等待 1 分鐘後再試。");
-                        }
-                        throw new Error(errJson.error?.message || `API 錯誤 (${res.status})`);
+                        if (res.status === 429) throw new Error("使用量達到上限，請稍後再試。");
+                        throw new Error(`API 錯誤 (${res.status})`);
                     }
 
                     const json = await res.json();
@@ -213,9 +242,12 @@
                     const data = JSON.parse(text.substring(start, end + 1));
                     
                     setResultData(data || { category: "工作" });
-                    setCapturedImage(base64);
+                    
+                    // 分配圖片：第一張為正面，第二張(若有)為附加照片
+                    setCapturedImage(tempScans[0]);
+                    setSecondImage(tempScans[1] || null);
+                    
                     setCurrentAvatar(null);
-                    setSecondImage(null); // 重置第二張照片
                     setCurrentCardId(null);
                     setView("result");
                 } catch (e) {
@@ -266,20 +298,26 @@
                 setResultData({...card});
                 setCapturedImage(card.image);
                 setCurrentAvatar(card.avatar);
-                setSecondImage(card.secondImage); // 載入第二張照片
+                setSecondImage(card.secondImage);
                 setCurrentCardId(card.id);
                 setView("result");
             };
 
-            // 搜尋與過濾邏輯
-            const filteredCards = cards.filter(c => {
-                const matchesCategory = filterCategory === "全部" || c.category === filterCategory;
-                const searchLower = searchQuery.toLowerCase();
-                const matchesSearch = !searchQuery || 
-                    (c.name && c.name.toLowerCase().includes(searchLower)) || 
-                    (c.company && c.company.toLowerCase().includes(searchLower));
-                return matchesCategory && matchesSearch;
-            });
+            const filteredCards = useMemo(() => {
+                let result = filterCategory === "全部" ? cards : cards.filter(c => c.category === filterCategory);
+                if (searchQuery) {
+                    const q = searchQuery.toLowerCase();
+                    result = result.filter(c => 
+                        (c.name && c.name.toLowerCase().includes(q)) || 
+                        (c.company && c.company.toLowerCase().includes(q))
+                    );
+                }
+                return result.sort((a, b) => {
+                    const companyA = (a.company || "").toLowerCase();
+                    const companyB = (b.company || "").toLowerCase();
+                    return companyA.localeCompare(companyB, "zh-Hant");
+                });
+            }, [cards, filterCategory, searchQuery]);
 
             return (
                 <div className="max-w-md mx-auto h-screen bg-gray-50 flex flex-col font-sans overflow-hidden border-x border-gray-200">
@@ -301,7 +339,6 @@
                                     </div>
                                 )}
                                 
-                                {/* 搜尋列 */}
                                 <div className="relative">
                                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                                         <Icon name="search" size={16} />
@@ -314,10 +351,7 @@
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                     />
                                     {searchQuery && (
-                                        <button 
-                                            onClick={() => setSearchQuery("")}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 p-1"
-                                        >
+                                        <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 p-1">
                                             <Icon name="x" size={14} />
                                         </button>
                                     )}
@@ -338,12 +372,12 @@
                                 ) : (
                                     filteredCards.map(c => (
                                         <div key={c.id} onClick={() => viewSavedCard(c)} className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform border border-transparent hover:border-blue-100">
-                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border">
-                                                {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
+                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border shrink-0">
+                                                {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{(c.company || c.name)?.[0]}</span>}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="font-bold truncate">{c.name}</div>
-                                                <div className="text-xs text-gray-400 truncate">{c.company}</div>
+                                                <div className="font-bold truncate text-gray-800">{c.company || "未填寫公司"}</div>
+                                                <div className="text-xs text-gray-400 truncate">{c.name}</div>
                                             </div>
                                             <button onClick={(e) => { e.stopPropagation(); if(confirm("刪除?")) setCards(cards.filter(x => x.id !== c.id)); }} className="text-gray-300 hover:text-red-500">
                                                 <Icon name="trash-2" />
@@ -360,6 +394,36 @@
                                 <input className="w-full bg-gray-100 p-2 rounded text-sm" placeholder="輸入 API Key" value={tempKey} onChange={e => setTempKey(e.target.value)} />
                                 <button onClick={() => { localStorage.setItem("snapcard_api_key", tempKey); setApiKey(tempKey); setView("home"); }} className="w-full bg-blue-600 text-white p-2 rounded font-bold">儲存</button>
                                 <button onClick={() => { if(confirm("清空?")) { setCards([]); localStorage.removeItem("snapcard_cards"); } }} className="w-full text-red-500 p-2 text-xs">清空所有資料</button>
+                            </div>
+                        )}
+
+                        {/* 掃描預覽/確認頁面 */}
+                        {view === "check_scans" && (
+                            <div className="h-full flex flex-col p-4 space-y-4">
+                                <div className="flex-1 overflow-y-auto space-y-4">
+                                    <h2 className="text-lg font-bold text-center">已拍攝 {tempScans.length} 張</h2>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        {tempScans.map((img, idx) => (
+                                            <div key={idx} className="relative rounded-xl overflow-hidden border shadow-sm">
+                                                <img src={img} className="w-full" />
+                                                <span className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
+                                                    {idx === 0 ? "正面" : "背面"}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-3">
+                                    {tempScans.length < 2 && (
+                                        <button onClick={() => setView("scan")} className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+                                            <Icon name="camera" size={18} /> 繼續拍攝背面
+                                        </button>
+                                    )}
+                                    <button onClick={analyze} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+                                        <Icon name="sparkles" size={18} /> 開始辨識
+                                    </button>
+                                    <button onClick={() => { setTempScans([]); setView("home"); }} className="text-gray-400 text-sm py-2">取消</button>
+                                </div>
                             </div>
                         )}
 
@@ -400,7 +464,6 @@
                                                 <Icon name="pencil" size={14} className="text-gray-300" />
                                             </div>
                                         ))}
-                                        {/* 新增：備註欄位 */}
                                         <div className="flex items-start gap-3 border-b pb-1">
                                             <div className="mt-1"><Icon name="file-text" className="text-gray-400" /></div>
                                             <textarea 
@@ -416,15 +479,15 @@
 
                                 {capturedImage && (
                                     <div className="bg-white p-4 rounded-xl shadow-sm">
-                                        <p className="text-xs font-bold text-gray-400 mb-2">名片快照</p>
+                                        <p className="text-xs font-bold text-gray-400 mb-2">正面名片</p>
                                         <img src={capturedImage} className="w-full rounded-lg" />
                                     </div>
                                 )}
 
-                                {/* 新增：附加照片區塊 */}
+                                {/* 附加照片/背面名片區塊 */}
                                 <div className="bg-white p-4 rounded-xl shadow-sm">
                                     <div className="flex justify-between items-center mb-2">
-                                        <p className="text-xs font-bold text-gray-400">附加照片</p>
+                                        <p className="text-xs font-bold text-gray-400">背面/附加照片</p>
                                         <div className="flex gap-2">
                                             {secondImage && (
                                                 <button onClick={() => setSecondImage(null)} className="text-red-400 text-xs font-bold flex items-center gap-1">
@@ -440,10 +503,7 @@
                                     {secondImage ? (
                                         <div className="relative">
                                             <img src={secondImage} className="w-full rounded-lg border border-gray-100" />
-                                            <button 
-                                                onClick={() => setSecondImage(null)}
-                                                className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow-md border-2 border-white hover:bg-red-600"
-                                            >
+                                            <button onClick={() => setSecondImage(null)} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow-md border-2 border-white hover:bg-red-600">
                                                 <Icon name="trash-2" size={14} />
                                             </button>
                                         </div>
@@ -456,7 +516,7 @@
                                 </div>
 
                                 <div className="flex gap-2">
-                                    <button onClick={() => setView("home")} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">取消</button>
+                                    <button onClick={() => { setView("home"); setTempScans([]); }} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">取消</button>
                                     <button onClick={saveCard} className="flex-[2] bg-blue-600 text-white p-3 rounded-xl font-bold flex justify-center items-center gap-2">
                                         <Icon name="save" /> 儲存
                                     </button>
@@ -467,13 +527,16 @@
 
                     {view === "home" && (
                         <div className="fixed bottom-6 left-0 w-full flex justify-center pointer-events-none">
-                            <button onClick={() => apiKey ? setView("scan") : setView("settings")} className="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform pointer-events-auto border-4 border-white hover:bg-blue-700">
+                            <button onClick={startScanFlow} className="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform pointer-events-auto border-4 border-white hover:bg-blue-700">
                                 <Icon name="camera" size={32} />
                             </button>
                         </div>
                     )}
 
-                    {view === "scan" && <CameraScanner onCapture={analyze} onCancel={() => setView("home")} />}
+                    {view === "scan" && <CameraScanner onCapture={handleScanCapture} onCancel={() => { 
+                        if(tempScans.length > 0) setView("check_scans");
+                        else setView("home"); 
+                    }} />}
 
                     {isProcessing && (
                         <div className="fixed inset-0 bg-black/80 z-[60] flex flex-col items-center justify-center text-white">
@@ -487,6 +550,7 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<ErrorBoundary><App /></ErrorBoundary>);
+        setTimeout(() => lucide.createIcons(), 500);
     </script>
 </body>
 </html>
