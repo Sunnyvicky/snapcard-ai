@@ -27,8 +27,7 @@
         /* 掃描線動畫 */
         @keyframes scan {
             0% { top: 0%; opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
+            50% { opacity: 1; }
             100% { top: 100%; opacity: 0; }
         }
         .scan-line {
@@ -106,7 +105,7 @@
                 img.onload = () => {
                     URL.revokeObjectURL(url);
                     const canvas = document.createElement('canvas');
-                    const MAX_SIZE = 600; 
+                    const MAX_SIZE = 800; 
                     let width = img.width;
                     let height = img.height;
 
@@ -131,7 +130,7 @@
             });
         };
 
-        // --- 相機元件 (所見即所得裁切版) ---
+        // --- 相機元件 (恢復 WYSIWYG 裁切) ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [error, setError] = useState(null);
@@ -163,8 +162,7 @@
                 const video = videoRef.current;
                 const canvas = document.createElement("canvas");
                 
-                // 1. 計算裁切區域 (所見即所得核心邏輯)
-                // 目標：截取的畫面必須跟螢幕上(CSS object-fit: cover)看到的一模一樣
+                // 1. 計算裁切區域 (所見即所得)
                 const videoRatio = video.videoWidth / video.videoHeight;
                 const displayRatio = video.clientWidth / video.clientHeight;
                 
@@ -180,8 +178,8 @@
                     sy = (video.videoHeight - sHeight) / 2;
                 }
 
-                // 2. 設定輸出尺寸 (維持記憶體安全限制 800px)
-                const MAX_DIM = 800;
+                // 2. 設定輸出尺寸
+                const MAX_DIM = 1000;
                 let destWidth = sWidth;
                 let destHeight = sHeight;
                 
@@ -194,11 +192,10 @@
                 canvas.width = destWidth;
                 canvas.height = destHeight;
                 
-                // 3. 繪製裁切後的影像
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, destWidth, destHeight);
                 
-                onCapture(canvas.toDataURL("image/jpeg", 0.6));
+                onCapture(canvas.toDataURL("image/jpeg", 0.7));
             };
 
             return (
@@ -207,7 +204,6 @@
                         <video ref={videoRef} playsInline muted autoPlay className="w-full h-full object-cover" />
                         {error && <div className="absolute inset-0 flex items-center justify-center text-white bg-black/80">{error}</div>}
                         
-                        {/* 掃描線 UI */}
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
                             <div className="w-3/4 aspect-[1.6/1] border-2 border-blue-500 rounded-xl relative shadow-[0_0_0_999px_rgba(0,0,0,0.5)] overflow-hidden">
                                 <div className="scan-line"></div>
@@ -235,11 +231,11 @@
             const [cards, setCards] = useState(() => {
                 try { return JSON.parse(localStorage.getItem("snapcard_cards") || "[]"); } catch { return []; }
             });
-            const [tempScans, setTempScans] = useState([]); 
-            const [capturedImage, setCapturedImage] = useState(null); // 正面
+            const [capturedImage, setCapturedImage] = useState(null); // 正面 (相機拍的)
             const [backImage, setBackImage] = useState(null); // 背面
-            const [currentAvatar, setCurrentAvatar] = useState(null);
-            const [additionalImage, setAdditionalImage] = useState(null); // 附加
+            const [currentAvatar, setCurrentAvatar] = useState(null); // 頭像
+            const [additionalImage, setAdditionalImage] = useState(null); // 附加照片
+            
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState({});
             const [currentCardId, setCurrentCardId] = useState(null);
@@ -247,9 +243,10 @@
             const [apiKey, setApiKey] = useState(() => localStorage.getItem("snapcard_api_key") || "");
             const [tempKey, setTempKey] = useState("");
             const [error, setError] = useState(null);
-            const [statusMsg, setStatusMsg] = useState("AI 辨識中...");
+            
             const avatarInputRef = useRef(null);
-            const secondImageInputRef = useRef(null); 
+            const backImageInputRef = useRef(null);
+            const additionalImageInputRef = useRef(null);
             const [searchQuery, setSearchQuery] = useState(""); 
 
             useEffect(() => {
@@ -262,89 +259,52 @@
                     if (window.lucide) window.lucide.createIcons();
                 }, 50);
                 return () => clearTimeout(timer);
-            }, [view, cards, tempScans, resultData, additionalImage, backImage, currentAvatar]);
+            }, [view, cards, resultData, additionalImage, backImage, currentAvatar]);
 
             const startScanFlow = () => {
                 if (!apiKey) {
                     setView("settings");
                     return;
                 }
-                setTempScans([]);
                 setView("scan");
             };
 
             const handleScanCapture = (base64) => {
-                const newScans = [...tempScans, base64];
-                setTempScans(newScans);
-                setView("check_scans");
+                setCapturedImage(base64);
+                // 拍完直接辨識 (回復舊有流程)
+                analyze(base64);
             };
 
             const analyze = async (base64) => {
                 setIsProcessing(true);
                 setError(null);
                 
-                // 簡化模型列表：只留 2.0 (快) 和 2.5 (穩)
-                const models = [
-                    "gemini-2.0-flash-exp",
-                    "gemini-2.5-flash-preview-09-2025"
-                ];
-
-                let imageParts = [];
-                if (tempScans.length > 0) {
-                    imageParts = tempScans.map(img => ({
-                        inlineData: { mimeType: "image/jpeg", data: img.split(',')[1] }
-                    }));
-                } else if (base64) {
-                    imageParts = [{
-                        inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] }
-                    }];
-                }
-
-                // 保持您的「資訊整合」指令
-                const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。若有兩張圖代表正反面，請整合資訊。company欄位請包含中文及英文名稱(若有)。category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdown。`;
-
-                const tryModel = async (index) => {
-                    if (index >= models.length) {
-                        throw new Error("系統忙線中 (429)，請休息 1 分鐘後再試。");
-                    }
-                    const model = models[index];
-                    setStatusMsg(index === 0 ? "AI 辨識中..." : "切換備用線路...");
-                    
-                    try {
-                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                contents: [{ 
-                                    parts: [
-                                        { text: promptText },
-                                        ...imageParts
-                                    ] 
-                                }]
-                            })
-                        });
-
-                        if (!res.ok) {
-                            if ([404, 429, 500, 503].includes(res.status)) {
-                                console.warn(`Model ${model} failed (${res.status}), trying next...`);
-                                // 遇到錯誤只等 1 秒就切換
-                                await new Promise(r => setTimeout(r, 1000));
-                                return await tryModel(index + 1);
-                            }
-                            const errJson = await res.json().catch(() => ({}));
-                            throw new Error(errJson.error?.message || `API Error (${res.status})`);
-                        }
-
-                        return await res.json();
-                    } catch (e) {
-                        console.warn(`Model ${model} error, switching...`, e);
-                        return await tryModel(index + 1);
-                    }
-                };
-
+                // 固定使用 gemini-1.5-flash，這是最穩定的免費版模型
+                const model = "gemini-1.5-flash";
+                
                 try {
-                    const json = await tryModel(0);
-                    
+                    const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。company欄位請包含中文及英文名稱(若有)。category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdown。`;
+
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            contents: [{ 
+                                parts: [
+                                    { text: promptText },
+                                    { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }
+                                ] 
+                            }]
+                        })
+                    });
+
+                    if (!res.ok) {
+                        const errJson = await res.json().catch(() => ({}));
+                        if (res.status === 429) throw new Error("免費額度已滿，請休息 1 分鐘後再試。");
+                        throw new Error(errJson.error?.message || `API Error (${res.status})`);
+                    }
+
+                    const json = await res.json();
                     let text = json.candidates[0].content.parts[0].text;
                     text = text.replace(/```json|```/g, '').trim();
                     const start = text.indexOf('{'), end = text.lastIndexOf('}');
@@ -352,21 +312,15 @@
                     
                     setResultData(data || { category: "工作" });
                     
-                    if (tempScans.length > 0) {
-                        setCapturedImage(tempScans[0]);
-                        setBackImage(tempScans[1] || null);
-                        setAdditionalImage(null);
-                    } else if (base64) {
-                        setCapturedImage(base64);
-                        setBackImage(null);
-                    }
-                    
+                    // 重置其他欄位
+                    setBackImage(null);
+                    setAdditionalImage(null);
                     setCurrentAvatar(null);
                     setCurrentCardId(null);
                     setView("result");
                 } catch (e) {
                     setError(e.message);
-                    if (view !== "check_scans") setView("home");
+                    setView("home");
                 } finally {
                     setIsProcessing(false);
                 }
@@ -391,20 +345,13 @@
                 setView("home");
             };
 
-            const handleAvatarUpload = async (e) => {
+            // 上傳處理函式 (共用壓縮邏輯)
+            const handleUpload = async (e, setter) => {
                 if (e.target.files[0]) {
                     try {
                         const base64 = await compressImage(e.target.files[0]);
-                        setCurrentAvatar(base64);
-                    } catch(err) { alert("圖片處理失敗"); }
-                }
-            };
-
-            const handleSecondImageUpload = async (e) => {
-                if (e.target.files[0]) {
-                    try {
-                        const base64 = await compressImage(e.target.files[0]);
-                        setAdditionalImage(base64);
+                        setter(base64);
+                        e.target.value = ''; // Reset input
                     } catch(err) { alert("圖片處理失敗"); }
                 }
             };
@@ -414,7 +361,7 @@
                 setCapturedImage(card.image);
                 setBackImage(card.backImage || null);
                 setCurrentAvatar(card.avatar);
-                setAdditionalImage(card.additionalImage || card.secondImage || null); 
+                setAdditionalImage(card.additionalImage || null); 
                 setCurrentCardId(card.id);
                 setView("result");
             };
@@ -514,35 +461,6 @@
                             </div>
                         )}
 
-                        {view === "check_scans" && (
-                            <div className="h-full flex flex-col p-4 space-y-4">
-                                <div className="flex-1 overflow-y-auto space-y-4">
-                                    <h2 className="text-lg font-bold text-center">已拍攝 {tempScans.length} 張</h2>
-                                    <div className="grid grid-cols-1 gap-4">
-                                        {tempScans.map((img, idx) => (
-                                            <div key={idx} className="relative rounded-xl overflow-hidden border shadow-sm">
-                                                <img src={img} className="w-full" />
-                                                <span className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
-                                                    {idx === 0 ? "正面" : "背面"}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="flex flex-col gap-3">
-                                    {tempScans.length < 2 && (
-                                        <button onClick={() => setView("scan")} className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
-                                            <Icon name="camera" size={18} /> 繼續拍攝背面
-                                        </button>
-                                    )}
-                                    <button onClick={() => analyze()} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2">
-                                        <Icon name="sparkles" size={18} /> 開始辨識
-                                    </button>
-                                    <button onClick={() => { setTempScans([]); setView("home"); }} className="text-gray-400 text-sm py-2">取消</button>
-                                </div>
-                            </div>
-                        )}
-
                         {view === "result" && (
                             <div className="space-y-4 pb-20">
                                 <div className="bg-white p-6 rounded-2xl shadow-lg border-t-4 border-blue-500">
@@ -553,7 +471,7 @@
                                             </div>
                                             {currentAvatar && <button onClick={(e) => { e.stopPropagation(); setCurrentAvatar(null); }} className="absolute -bottom-1 -right-1 bg-red-500 text-white p-1 rounded-full shadow-md hover:bg-red-600"><Icon name="x" size={12} /></button>}
                                         </div>
-                                        <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
+                                        <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={(e) => handleUpload(e, setCurrentAvatar)} />
                                         
                                         <div className="flex-1 space-y-2">
                                             <input className="text-xl font-black w-full bg-transparent border-b focus:border-blue-500 outline-none" value={resultData.name || ""} placeholder="姓名" onChange={e => setResultData({...resultData, name: e.target.value})} />
@@ -593,28 +511,46 @@
                                     </div>
                                 </div>
 
-                                {capturedImage && (
-                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                                        <p className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
-                                            <Icon name="image" size={14} /> 名片快照
-                                        </p>
-                                        <div className="space-y-2">
-                                            {capturedImage && (
-                                                <div className="relative">
-                                                    <img src={capturedImage} className="w-full rounded-lg border border-gray-100" />
-                                                    <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">正面</span>
-                                                </div>
-                                            )}
-                                            {backImage && (
+                                {/* 名片快照 (背面照片在這裡) */}
+                                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                    <p className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
+                                        <Icon name="image" size={14} /> 名片快照
+                                    </p>
+                                    <div className="space-y-4">
+                                        {capturedImage && (
+                                            <div className="relative">
+                                                <img src={capturedImage} className="w-full rounded-lg border border-gray-100" />
+                                                <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">正面</span>
+                                            </div>
+                                        )}
+                                        
+                                        {/* 背面照片上傳區 */}
+                                        <div className="relative">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-[10px] text-gray-400">背面照片</span>
+                                                <button onClick={() => backImageInputRef.current?.click()} className="text-blue-500 text-[10px] font-bold">
+                                                    {backImage ? "更換" : "新增"}
+                                                </button>
+                                            </div>
+                                            <input type="file" ref={backImageInputRef} className="hidden" accept="image/*" onChange={(e) => handleUpload(e, setBackImage)} />
+                                            
+                                            {backImage ? (
                                                 <div className="relative">
                                                     <img src={backImage} className="w-full rounded-lg border border-gray-100" />
-                                                    <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">背面</span>
+                                                    <button onClick={() => setBackImage(null)} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full shadow-md hover:bg-red-600">
+                                                        <Icon name="trash-2" size={12} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div onClick={() => backImageInputRef.current?.click()} className="w-full h-20 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 cursor-pointer">
+                                                    <Icon name="plus" size={16} />
                                                 </div>
                                             )}
                                         </div>
                                     </div>
-                                )}
+                                </div>
 
+                                {/* 附加照片 */}
                                 <div className="bg-white p-4 rounded-xl shadow-sm">
                                     <div className="flex justify-between items-center mb-2">
                                         <p className="text-xs font-bold text-gray-400">附加照片</p>
@@ -629,7 +565,7 @@
                                             </button>
                                         </div>
                                     </div>
-                                    <input type="file" ref={secondImageInputRef} className="hidden" accept="image/*" onChange={handleSecondImageUpload} />
+                                    <input type="file" ref={secondImageInputRef} className="hidden" accept="image/*" onChange={(e) => handleUpload(e, setAdditionalImage)} />
                                     {additionalImage ? (
                                         <div className="relative">
                                             <img src={additionalImage} className="w-full rounded-lg border border-gray-100" />
@@ -663,15 +599,12 @@
                         </div>
                     )}
 
-                    {view === "scan" && <CameraScanner onCapture={handleScanCapture} onCancel={() => { 
-                        if(tempScans.length > 0) setView("check_scans");
-                        else setView("home"); 
-                    }} />}
+                    {view === "scan" && <CameraScanner onCapture={handleScanCapture} onCancel={() => setView("home")} />}
 
                     {isProcessing && (
                         <div className="fixed inset-0 bg-black/80 z-[60] flex flex-col items-center justify-center text-white">
                             <div className="animate-spin w-10 h-10 border-4 border-white border-t-transparent rounded-full mb-4"></div>
-                            <p>{statusMsg}</p>
+                            <p>AI 辨識中...</p>
                         </div>
                     )}
                 </div>
