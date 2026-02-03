@@ -133,7 +133,19 @@
                             videoRef.current.play().catch(e => console.error("Play error", e));
                         }
                     } catch (e) {
-                        setError("無法啟動相機: " + e.message);
+                        // 如果環境鏡頭失敗，嘗試不指定 facingMode
+                        try {
+                            stream = await navigator.mediaDevices.getUserMedia({
+                                video: true,
+                                audio: false
+                            });
+                            if (videoRef.current) {
+                                videoRef.current.srcObject = stream;
+                                videoRef.current.play().catch(e => console.error("Play error retry", e));
+                            }
+                        } catch (err2) {
+                            setError("無法啟動相機: " + e.message);
+                        }
                     }
                 };
                 startCamera();
@@ -174,11 +186,9 @@
             const [cards, setCards] = useState(() => {
                 try { return JSON.parse(localStorage.getItem("snapcard_cards") || "[]"); } catch { return []; }
             });
-            const [tempScans, setTempScans] = useState([]); 
-            const [capturedImage, setCapturedImage] = useState(null); // 正面
-            const [backImage, setBackImage] = useState(null); // 背面
+            const [capturedImage, setCapturedImage] = useState(null);
             const [currentAvatar, setCurrentAvatar] = useState(null);
-            const [additionalImage, setAdditionalImage] = useState(null); // 附加
+            const [additionalImage, setAdditionalImage] = useState(null);
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState({});
             const [currentCardId, setCurrentCardId] = useState(null);
@@ -186,9 +196,8 @@
             const [apiKey, setApiKey] = useState(() => localStorage.getItem("snapcard_api_key") || "");
             const [tempKey, setTempKey] = useState("");
             const [error, setError] = useState(null);
-            const [statusMsg, setStatusMsg] = useState("AI 辨識中...");
             const avatarInputRef = useRef(null);
-            const secondImageInputRef = useRef(null); 
+            const additionalImageInputRef = useRef(null);
             const [searchQuery, setSearchQuery] = useState(""); 
 
             useEffect(() => {
@@ -201,100 +210,43 @@
                     if (window.lucide) window.lucide.createIcons();
                 }, 50);
                 return () => clearTimeout(timer);
-            }, [view, cards, tempScans, resultData, additionalImage, backImage, currentAvatar]);
-
-            const startScanFlow = () => {
-                if (!apiKey) {
-                    setView("settings");
-                    return;
-                }
-                setTempScans([]);
-                setView("scan");
-            };
+            }, [view, cards, resultData, additionalImage, currentAvatar]);
 
             const handleScanCapture = (base64) => {
-                const newScans = [...tempScans, base64];
-                setTempScans(newScans);
-                setView("check_scans");
+                setCapturedImage(base64);
+                // 拍完照直接開始分析 (單拍模式)
+                analyze(base64);
             };
 
             const analyze = async (base64) => {
                 setIsProcessing(true);
                 setError(null);
                 
-                // 定義模型列表 (優先順序)
-                const models = [
-                    "gemini-1.5-flash",
-                    "gemini-1.5-flash-8b",
-                    "gemini-1.5-flash-002",
-                    "gemini-2.5-flash-preview-09-2025"
-                ];
-
-                // 準備圖片 payload
-                let imageParts = [];
-                if (tempScans.length > 0) {
-                    imageParts = tempScans.map(img => ({
-                        inlineData: { mimeType: "image/jpeg", data: img.split(',')[1] }
-                    }));
-                } else if (base64) {
-                    imageParts = [{
-                        inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] }
-                    }];
-                }
-
-                // 修正：強化提示詞，要求整合正反面資訊
-                const promptText = `分析名片圖片(包含正反面)。請將正反兩面的資訊整合。
-特別注意：
-1. 姓名欄位請同時包含中文與英文姓名(例如: "王小明 David Wang")。
-2. 公司欄位請同時包含中文與英文名稱(例如: "台積電 TSMC")。
-3. 若有不同語言的職稱也請合併。
-回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。
-category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdown。`;
-
-                // 遞迴嘗試模型
-                const tryModel = async (index) => {
-                    if (index >= models.length) {
-                        throw new Error("系統繁忙 (429)，所有線路皆滿線。請休息 1 分鐘後再試。");
-                    }
-                    const model = models[index];
-                    setStatusMsg(`正在連線線路 ${index + 1}/${models.length}...`);
-                    
-                    try {
-                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                contents: [{ 
-                                    parts: [
-                                        { text: promptText },
-                                        ...imageParts
-                                    ] 
-                                }]
-                            })
-                        });
-
-                        // 遇到錯誤時切換
-                        if (!res.ok) {
-                            if ([404, 429, 500, 503].includes(res.status)) {
-                                console.warn(`Model ${model} failed (${res.status}), trying next...`);
-                                await new Promise(r => setTimeout(r, 2000));
-                                return await tryModel(index + 1);
-                            }
-                            const errJson = await res.json().catch(() => ({}));
-                            throw new Error(errJson.error?.message || `API Error (${res.status})`);
-                        }
-
-                        return await res.json();
-                    } catch (e) {
-                        console.warn(`Model ${model} error, switching...`, e);
-                        await new Promise(r => setTimeout(r, 2000));
-                        return await tryModel(index + 1);
-                    }
-                };
-
                 try {
-                    const json = await tryModel(0);
-                    
+                    // 使用單一穩定模型 gemini-1.5-flash
+                    const model = "gemini-1.5-flash";
+                    const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。company欄位請包含中文及英文名稱(若有)。category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdown。`;
+
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            contents: [{ 
+                                parts: [
+                                    { text: promptText },
+                                    { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }
+                                ] 
+                            }]
+                        })
+                    });
+
+                    if (!res.ok) {
+                        const errJson = await res.json().catch(() => ({}));
+                        if (res.status === 429) throw new Error("免費額度已滿，請休息 1 分鐘後再試。");
+                        throw new Error(errJson.error?.message || `API Error (${res.status})`);
+                    }
+
+                    const json = await res.json();
                     let text = json.candidates[0].content.parts[0].text;
                     text = text.replace(/```json|```/g, '').trim();
                     const start = text.indexOf('{'), end = text.lastIndexOf('}');
@@ -302,21 +254,14 @@ category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdo
                     
                     setResultData(data || { category: "工作" });
                     
-                    if (tempScans.length > 0) {
-                        setCapturedImage(tempScans[0]);
-                        setBackImage(tempScans[1] || null);
-                        setAdditionalImage(null);
-                    } else if (base64) {
-                        setCapturedImage(base64);
-                        setBackImage(null);
-                    }
-                    
+                    // 重置其他圖片欄位
+                    setAdditionalImage(null);
                     setCurrentAvatar(null);
                     setCurrentCardId(null);
                     setView("result");
                 } catch (e) {
                     setError(e.message);
-                    if (view !== "check_scans") setView("home");
+                    setView("home");
                 } finally {
                     setIsProcessing(false);
                 }
@@ -327,7 +272,6 @@ category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdo
                     id: currentCardId || Date.now(), 
                     ...resultData, 
                     image: capturedImage, 
-                    backImage: backImage, 
                     avatar: currentAvatar,
                     additionalImage: additionalImage, 
                     category: resultData.category || "工作" 
@@ -350,7 +294,7 @@ category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdo
                 }
             };
 
-            const handleSecondImageUpload = async (e) => {
+            const handleAdditionalImageUpload = async (e) => {
                 if (e.target.files[0]) {
                     try {
                         const base64 = await compressImage(e.target.files[0]);
@@ -362,9 +306,8 @@ category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdo
             const viewSavedCard = (card) => {
                 setResultData({...card});
                 setCapturedImage(card.image);
-                setBackImage(card.backImage || null);
                 setCurrentAvatar(card.avatar);
-                setAdditionalImage(card.additionalImage || card.secondImage || null); 
+                setAdditionalImage(card.additionalImage || card.secondImage || card.backImage || null); 
                 setCurrentCardId(card.id);
                 setView("result");
             };
@@ -405,7 +348,6 @@ category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdo
                                     </div>
                                 )}
                                 
-                                {/* 搜尋列 */}
                                 <div className="relative">
                                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                                         <Icon name="search" size={16} />
@@ -464,35 +406,6 @@ category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdo
                             </div>
                         )}
 
-                        {view === "check_scans" && (
-                            <div className="h-full flex flex-col p-4 space-y-4">
-                                <div className="flex-1 overflow-y-auto space-y-4">
-                                    <h2 className="text-lg font-bold text-center">已拍攝 {tempScans.length} 張</h2>
-                                    <div className="grid grid-cols-1 gap-4">
-                                        {tempScans.map((img, idx) => (
-                                            <div key={idx} className="relative rounded-xl overflow-hidden border shadow-sm">
-                                                <img src={img} className="w-full" />
-                                                <span className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
-                                                    {idx === 0 ? "正面" : "背面"}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="flex flex-col gap-3">
-                                    {tempScans.length < 2 && (
-                                        <button onClick={() => setView("scan")} className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
-                                            <Icon name="camera" size={18} /> 繼續拍攝背面
-                                        </button>
-                                    )}
-                                    <button onClick={() => analyze()} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2">
-                                        <Icon name="sparkles" size={18} /> 開始辨識
-                                    </button>
-                                    <button onClick={() => { setTempScans([]); setView("home"); }} className="text-gray-400 text-sm py-2">取消</button>
-                                </div>
-                            </div>
-                        )}
-
                         {view === "result" && (
                             <div className="space-y-4 pb-20">
                                 <div className="bg-white p-6 rounded-2xl shadow-lg border-t-4 border-blue-500">
@@ -548,26 +461,13 @@ category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdo
                                         <p className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
                                             <Icon name="image" size={14} /> 名片快照
                                         </p>
-                                        <div className="space-y-2">
-                                            {capturedImage && (
-                                                <div className="relative">
-                                                    <img src={capturedImage} className="w-full rounded-lg border border-gray-100" />
-                                                    <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">正面</span>
-                                                </div>
-                                            )}
-                                            {backImage && (
-                                                <div className="relative">
-                                                    <img src={backImage} className="w-full rounded-lg border border-gray-100" />
-                                                    <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">背面</span>
-                                                </div>
-                                            )}
-                                        </div>
+                                        <img src={capturedImage} className="w-full rounded-lg border border-gray-100" />
                                     </div>
                                 )}
 
                                 <div className="bg-white p-4 rounded-xl shadow-sm">
                                     <div className="flex justify-between items-center mb-2">
-                                        <p className="text-xs font-bold text-gray-400">附加照片</p>
+                                        <p className="text-xs font-bold text-gray-400">背面/附加照片</p>
                                         <div className="flex gap-2">
                                             {additionalImage && (
                                                 <button onClick={() => setAdditionalImage(null)} className="text-red-400 text-xs font-bold flex items-center gap-1">
@@ -607,21 +507,18 @@ category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdo
 
                     {view === "home" && (
                         <div className="fixed bottom-6 left-0 w-full flex justify-center pointer-events-none">
-                            <button onClick={startScanFlow} className="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform pointer-events-auto border-4 border-white hover:bg-blue-700">
+                            <button onClick={() => apiKey ? setView("scan") : setView("settings")} className="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform pointer-events-auto border-4 border-white hover:bg-blue-700">
                                 <Icon name="camera" size={32} />
                             </button>
                         </div>
                     )}
 
-                    {view === "scan" && <CameraScanner onCapture={handleScanCapture} onCancel={() => { 
-                        if(tempScans.length > 0) setView("check_scans");
-                        else setView("home"); 
-                    }} />}
+                    {view === "scan" && <CameraScanner onCapture={handleScanCapture} onCancel={() => setView("home")} />}
 
                     {isProcessing && (
                         <div className="fixed inset-0 bg-black/80 z-[60] flex flex-col items-center justify-center text-white">
                             <div className="animate-spin w-10 h-10 border-4 border-white border-t-transparent rounded-full mb-4"></div>
-                            <p>{statusMsg}</p>
+                            <p>AI 辨識中...</p>
                         </div>
                     )}
                 </div>
