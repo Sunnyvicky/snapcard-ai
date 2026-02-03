@@ -44,31 +44,24 @@
             }
         }
 
-        // --- 安全的 Icon 元件 (黑盒子模式) ---
-        // React 建立容器，Lucide 負責填內容，互不干擾
+        // --- 安全的 Icon 元件 ---
         const Icon = ({ name, size = 20, className = "" }) => {
             const ref = useRef(null);
 
             useEffect(() => {
                 if (!ref.current || !window.lucide) return;
-
-                // 1. 清空容器
                 const container = ref.current;
                 container.innerHTML = '';
-
-                // 2. 建立 Lucide 需要的標籤
                 const i = document.createElement('i');
                 i.setAttribute('data-lucide', name);
                 container.appendChild(i);
-
-                // 3. 呼叫 Lucide 渲染，並限制範圍在目前的容器內
                 window.lucide.createIcons({
                     root: container,
                     nameAttr: 'data-lucide',
                     attrs: {
                         width: size,
                         height: size,
-                        class: className // 將 className 傳給 SVG
+                        class: className 
                     }
                 });
             }, [name, size, className]);
@@ -76,7 +69,7 @@
             return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center' }}></span>;
         };
 
-        // --- 極致安全壓縮 (Object URL) ---
+        // --- 極致安全壓縮 ---
         const compressImage = (file) => {
             return new Promise((resolve, reject) => {
                 if (!file) return reject("無檔案");
@@ -182,7 +175,7 @@
             const [error, setError] = useState(null);
             const avatarInputRef = useRef(null);
             const secondImageInputRef = useRef(null); // 新增：第二張照片的 ref
-            const [searchQuery, setSearchQuery] = useState(""); // 新增：搜尋關鍵字狀態
+            const [searchQuery, setSearchQuery] = useState(""); 
 
             useEffect(() => {
                 try { localStorage.setItem("snapcard_cards", JSON.stringify(cards)); }
@@ -192,7 +185,8 @@
             const analyze = async (base64) => {
                 setIsProcessing(true);
                 try {
-                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    // 更新：改用 gemini-1.5-flash，免費額度限制較寬鬆
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -202,9 +196,17 @@
                             ] }]
                         })
                     });
-                    const json = await res.json();
-                    if (json.error) throw new Error(json.error.message);
                     
+                    if (!res.ok) {
+                        const errJson = await res.json().catch(() => ({}));
+                        // 特別處理 429 錯誤
+                        if (res.status === 429) {
+                            throw new Error("使用量達到上限，請等待 1 分鐘後再試。");
+                        }
+                        throw new Error(errJson.error?.message || `API 錯誤 (${res.status})`);
+                    }
+
+                    const json = await res.json();
                     let text = json.candidates[0].content.parts[0].text;
                     text = text.replace(/```json|```/g, '').trim();
                     const start = text.indexOf('{'), end = text.lastIndexOf('}');
@@ -217,7 +219,7 @@
                     setCurrentCardId(null);
                     setView("result");
                 } catch (e) {
-                    setError("辨識失敗: " + e.message);
+                    setError(e.message);
                     setView("home");
                 } finally {
                     setIsProcessing(false);
@@ -230,7 +232,7 @@
                     ...resultData, 
                     image: capturedImage, 
                     avatar: currentAvatar,
-                    secondImage: secondImage, // 儲存第二張照片
+                    secondImage: secondImage, 
                     category: resultData.category || "工作" 
                 };
                 
@@ -335,7 +337,7 @@
                                     </div>
                                 ) : (
                                     filteredCards.map(c => (
-                                        <div key={c.id} onClick={() => viewSavedCard(c)} className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform">
+                                        <div key={c.id} onClick={() => viewSavedCard(c)} className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform border border-transparent hover:border-blue-100">
                                             <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border">
                                                 {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
                                             </div>
