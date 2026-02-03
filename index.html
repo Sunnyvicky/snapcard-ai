@@ -170,6 +170,7 @@
             const [resultData, setResultData] = useState({});
             const [currentCardId, setCurrentCardId] = useState(null);
             const [filterCategory, setFilterCategory] = useState("全部");
+            const [searchQuery, setSearchQuery] = useState(""); // 新增：搜尋關鍵字狀態
             const [apiKey, setApiKey] = useState(() => localStorage.getItem("snapcard_api_key") || "");
             const [tempKey, setTempKey] = useState("");
             const [error, setError] = useState(null);
@@ -261,7 +262,15 @@
                 setView("result");
             };
 
-            const filteredCards = filterCategory === "全部" ? cards : cards.filter(c => c.category === filterCategory);
+            // 搜尋與過濾邏輯
+            const filteredCards = cards.filter(c => {
+                const matchesCategory = filterCategory === "全部" || c.category === filterCategory;
+                const searchLower = searchQuery.toLowerCase();
+                const matchesSearch = !searchQuery || 
+                    (c.name && c.name.toLowerCase().includes(searchLower)) || 
+                    (c.company && c.company.toLowerCase().includes(searchLower));
+                return matchesCategory && matchesSearch;
+            });
 
             return (
                 <div className="max-w-md mx-auto h-screen bg-gray-50 flex flex-col font-sans overflow-hidden border-x border-gray-200">
@@ -283,20 +292,45 @@
                                     </div>
                                 )}
                                 
+                                {/* 搜尋列 */}
+                                <div className="relative">
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                        <Icon name="search" size={16} />
+                                    </div>
+                                    <input 
+                                        type="text" 
+                                        placeholder="搜尋姓名或公司..." 
+                                        className="w-full bg-white border border-gray-100 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 shadow-sm"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                    />
+                                    {searchQuery && (
+                                        <button 
+                                            onClick={() => setSearchQuery("")}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 p-1"
+                                        >
+                                            <Icon name="x" size={14} />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* 分類過濾 */}
                                 <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar">
                                     {["全部", "工作", "家人", "同學", "朋友"].map(cat => (
-                                        <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${filterCategory === cat ? "bg-blue-600 text-white" : "bg-white text-gray-500 border"}`}>
+                                        <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${filterCategory === cat ? "bg-blue-600 text-white shadow-sm" : "bg-white text-gray-500 border border-gray-100"}`}>
                                             {cat}
                                         </button>
                                     ))}
                                 </div>
 
                                 {filteredCards.length === 0 ? (
-                                    <div className="text-center py-20 text-gray-400 text-sm">暫無名片</div>
+                                    <div className="text-center py-20 text-gray-400 text-sm">
+                                        {cards.length === 0 ? "暫無名片" : "找不到符合的名片"}
+                                    </div>
                                 ) : (
                                     filteredCards.map(c => (
-                                        <div key={c.id} onClick={() => viewSavedCard(c)} className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform">
-                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border">
+                                        <div key={c.id} onClick={() => viewSavedCard(c)} className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform border border-transparent hover:border-blue-100">
+                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center font-bold text-gray-500 shrink-0 overflow-hidden border border-gray-200">
                                                 {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
                                             </div>
                                             <div className="flex-1 min-w-0">
@@ -373,13 +407,19 @@
                                     </div>
                                 )}
 
-                                {/* 修正：附加照片區塊 + 刪除按鈕 */}
                                 <div className="bg-white p-4 rounded-xl shadow-sm">
                                     <div className="flex justify-between items-center mb-2">
                                         <p className="text-xs font-bold text-gray-400">附加照片</p>
-                                        <button onClick={() => secondImageInputRef.current?.click()} className="text-blue-500 text-xs font-bold flex items-center gap-1">
-                                            <Icon name="image-plus" size={14} /> {secondImage ? "更換" : "上傳"}
-                                        </button>
+                                        <div className="flex gap-2">
+                                            {secondImage && (
+                                                <button onClick={() => setSecondImage(null)} className="text-red-400 text-xs font-bold flex items-center gap-1">
+                                                    <Icon name="trash-2" size={14} /> 刪除
+                                                </button>
+                                            )}
+                                            <button onClick={() => secondImageInputRef.current?.click()} className="text-blue-500 text-xs font-bold flex items-center gap-1">
+                                                <Icon name="image-plus" size={14} /> {secondImage ? "更換" : "上傳"}
+                                            </button>
+                                        </div>
                                     </div>
                                     <input type="file" ref={secondImageInputRef} className="hidden" accept="image/*" onChange={handleSecondImageUpload} />
                                     {secondImage ? (
