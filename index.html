@@ -175,7 +175,7 @@
             const [apiKey, setApiKey] = useState(() => localStorage.getItem("snapcard_api_key") || "");
             const [tempKey, setTempKey] = useState("");
             const [error, setError] = useState(null);
-            const [statusMsg, setStatusMsg] = useState("AI 辨識中..."); // 新增狀態訊息
+            const [statusMsg, setStatusMsg] = useState("AI 辨識中...");
             const avatarInputRef = useRef(null);
             const secondImageInputRef = useRef(null); 
             const [searchQuery, setSearchQuery] = useState(""); 
@@ -211,11 +211,12 @@
                 setIsProcessing(true);
                 setError(null);
                 
-                // 定義模型列表 (優先順序)
+                // 定義模型列表 (優先順序：2.0實驗版 -> 1.5標準 -> 1.5輕量 -> 2.5預覽)
+                // 2.0-flash-exp 通常有額外的配額池，先試試看
                 const models = [
+                    "gemini-2.0-flash-exp",
                     "gemini-1.5-flash",
                     "gemini-1.5-flash-8b",
-                    "gemini-1.5-flash-002",
                     "gemini-2.5-flash-preview-09-2025"
                 ];
 
@@ -231,16 +232,15 @@
                     }];
                 }
 
-                // 修正：回到最單純的提示詞，不強制合併英文公司名
                 const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。category從[工作,家人,同學,朋友]選。note欄位保留空白讓使用者填寫。無Markdown。`;
 
                 // 遞迴嘗試模型
                 const tryModel = async (index) => {
                     if (index >= models.length) {
-                        throw new Error("所有 AI 模型暫時繁忙，請稍後再試。");
+                        throw new Error("系統繁忙 (429)，所有線路皆滿線。請休息 1 分鐘後再試。");
                     }
                     const model = models[index];
-                    setStatusMsg(`嘗試連線... (方案 ${index + 1})`);
+                    setStatusMsg(`正在連線線路 ${index + 1}/${models.length}...`);
                     
                     try {
                         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
@@ -256,10 +256,12 @@
                             })
                         });
 
-                        // 如果 404 (找不到) 或 429 (額度滿) 或 503 (維護)，就換下一個
+                        // 遇到錯誤時切換
                         if (!res.ok) {
                             if ([404, 429, 500, 503].includes(res.status)) {
                                 console.warn(`Model ${model} failed (${res.status}), trying next...`);
+                                // 智慧等待：在切換前等待 2 秒，降低頻率
+                                await new Promise(r => setTimeout(r, 2000));
                                 return await tryModel(index + 1);
                             }
                             const errJson = await res.json().catch(() => ({}));
@@ -268,8 +270,8 @@
 
                         return await res.json();
                     } catch (e) {
-                        console.warn(`Model ${model} network/parse error`, e);
-                        // 網路連線錯誤也嘗試下一個
+                        console.warn(`Model ${model} error, switching...`, e);
+                        await new Promise(r => setTimeout(r, 2000));
                         return await tryModel(index + 1);
                     }
                 };
@@ -578,7 +580,7 @@
                                 </div>
 
                                 <div className="flex gap-2">
-                                    <button onClick={() => { setView("home"); setTempScans([]); }} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">取消</button>
+                                    <button onClick={() => setView("home")} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">取消</button>
                                     <button onClick={saveCard} className="flex-[2] bg-blue-600 text-white p-3 rounded-xl font-bold flex justify-center items-center gap-2">
                                         <Icon name="save" /> 儲存
                                     </button>
