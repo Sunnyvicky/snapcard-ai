@@ -19,7 +19,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useRef, useEffect, useMemo, Component } = React;
+        const { useState, useRef, useEffect, Component } = React;
 
         // --- 錯誤邊界 ---
         class ErrorBoundary extends Component {
@@ -45,23 +45,30 @@
         }
 
         // --- 安全的 Icon 元件 (黑盒子模式) ---
+        // React 建立容器，Lucide 負責填內容，互不干擾
         const Icon = ({ name, size = 20, className = "" }) => {
             const ref = useRef(null);
 
             useEffect(() => {
                 if (!ref.current || !window.lucide) return;
+
+                // 1. 清空容器
                 const container = ref.current;
                 container.innerHTML = '';
+
+                // 2. 建立 Lucide 需要的標籤
                 const i = document.createElement('i');
                 i.setAttribute('data-lucide', name);
                 container.appendChild(i);
+
+                // 3. 呼叫 Lucide 渲染，並限制範圍在目前的容器內
                 window.lucide.createIcons({
                     root: container,
                     nameAttr: 'data-lucide',
                     attrs: {
                         width: size,
                         height: size,
-                        class: className
+                        class: className // 將 className 傳給 SVG
                     }
                 });
             }, [name, size, className]);
@@ -165,6 +172,7 @@
             });
             const [capturedImage, setCapturedImage] = useState(null);
             const [currentAvatar, setCurrentAvatar] = useState(null);
+            const [secondImage, setSecondImage] = useState(null); // 新增：第二張照片
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState({});
             const [currentCardId, setCurrentCardId] = useState(null);
@@ -173,6 +181,7 @@
             const [tempKey, setTempKey] = useState("");
             const [error, setError] = useState(null);
             const avatarInputRef = useRef(null);
+            const secondImageInputRef = useRef(null); // 新增：第二張照片的 ref
 
             useEffect(() => {
                 try { localStorage.setItem("snapcard_cards", JSON.stringify(cards)); }
@@ -187,7 +196,7 @@
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             contents: [{ parts: [
-                                { text: `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作"}。category從[工作,家人,同學,朋友]選。無Markdown。` },
+                                { text: `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。category從[工作,家人,同學,朋友]選。note欄位保留空白讓使用者填寫。無Markdown。` },
                                 { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }
                             ] }]
                         })
@@ -203,6 +212,7 @@
                     setResultData(data || { category: "工作" });
                     setCapturedImage(base64);
                     setCurrentAvatar(null);
+                    setSecondImage(null); // 重置第二張照片
                     setCurrentCardId(null);
                     setView("result");
                 } catch (e) {
@@ -219,6 +229,7 @@
                     ...resultData, 
                     image: capturedImage, 
                     avatar: currentAvatar,
+                    secondImage: secondImage, // 儲存第二張照片
                     category: resultData.category || "工作" 
                 };
                 
@@ -239,18 +250,25 @@
                 }
             };
 
-            // 使用 useMemo 進行排序與過濾
-            const filteredCards = useMemo(() => {
-                let result = filterCategory === "全部" ? cards : cards.filter(c => c.category === filterCategory);
-                
-                // 依公司名稱排序 (中文筆畫/英文A-Z)
-                return result.sort((a, b) => {
-                    const companyA = (a.company || "").toLowerCase();
-                    const companyB = (b.company || "").toLowerCase();
-                    // 使用 localeCompare 支援中文排序
-                    return companyA.localeCompare(companyB, "zh-Hant");
-                });
-            }, [cards, filterCategory]);
+            const handleSecondImageUpload = async (e) => {
+                if (e.target.files[0]) {
+                    try {
+                        const base64 = await compressImage(e.target.files[0]);
+                        setSecondImage(base64);
+                    } catch(err) { alert("圖片處理失敗"); }
+                }
+            };
+
+            const viewSavedCard = (card) => {
+                setResultData({...card});
+                setCapturedImage(card.image);
+                setCurrentAvatar(card.avatar);
+                setSecondImage(card.secondImage); // 載入第二張照片
+                setCurrentCardId(card.id);
+                setView("result");
+            };
+
+            const filteredCards = filterCategory === "全部" ? cards : cards.filter(c => c.category === filterCategory);
 
             return (
                 <div className="max-w-md mx-auto h-screen bg-gray-50 flex flex-col font-sans overflow-hidden border-x border-gray-200">
@@ -284,21 +302,13 @@
                                     <div className="text-center py-20 text-gray-400 text-sm">暫無名片</div>
                                 ) : (
                                     filteredCards.map(c => (
-                                        <div key={c.id} onClick={() => {
-                                            setResultData(c);
-                                            setCapturedImage(c.image);
-                                            setCurrentAvatar(c.avatar);
-                                            setCurrentCardId(c.id);
-                                            setView("result");
-                                        }} className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform">
-                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border shrink-0">
-                                                {/* 頭像顯示邏輯：有頭像顯示頭像，沒頭像顯示公司首字，沒公司顯示姓名首字 */}
-                                                {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{(c.company || c.name)?.[0]}</span>}
+                                        <div key={c.id} onClick={() => viewSavedCard(c)} className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform">
+                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border">
+                                                {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                {/* 修改顯示順序：公司優先 */}
-                                                <div className="font-bold truncate text-gray-800">{c.company || "未填寫公司"}</div>
-                                                <div className="text-xs text-gray-400 truncate">{c.name}</div>
+                                                <div className="font-bold truncate">{c.name}</div>
+                                                <div className="text-xs text-gray-400 truncate">{c.company}</div>
                                             </div>
                                             <button onClick={(e) => { e.stopPropagation(); if(confirm("刪除?")) setCards(cards.filter(x => x.id !== c.id)); }} className="text-gray-300 hover:text-red-500">
                                                 <Icon name="trash-2" />
@@ -352,6 +362,17 @@
                                                 <Icon name="pencil" size={14} className="text-gray-300" />
                                             </div>
                                         ))}
+                                        {/* 新增：備註欄位 */}
+                                        <div className="flex items-start gap-3 border-b pb-1">
+                                            <div className="mt-1"><Icon name="file-text" className="text-gray-400" /></div>
+                                            <textarea 
+                                                className="flex-1 bg-transparent text-sm font-medium outline-none resize-none h-20"
+                                                value={resultData.note || ""}
+                                                placeholder="填寫備註..."
+                                                onChange={e => setResultData({...resultData, note: e.target.value})}
+                                            />
+                                            <div className="mt-1"><Icon name="pencil" size={14} className="text-gray-300" /></div>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -361,6 +382,25 @@
                                         <img src={capturedImage} className="w-full rounded-lg" />
                                     </div>
                                 )}
+
+                                {/* 新增：附加照片區塊 */}
+                                <div className="bg-white p-4 rounded-xl shadow-sm">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <p className="text-xs font-bold text-gray-400">附加照片</p>
+                                        <button onClick={() => secondImageInputRef.current?.click()} className="text-blue-500 text-xs font-bold">
+                                            {secondImage ? "更換" : "上傳"}
+                                        </button>
+                                    </div>
+                                    <input type="file" ref={secondImageInputRef} className="hidden" accept="image/*" onChange={handleSecondImageUpload} />
+                                    {secondImage ? (
+                                        <img src={secondImage} className="w-full rounded-lg" />
+                                    ) : (
+                                        <div onClick={() => secondImageInputRef.current?.click()} className="w-full h-32 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-300 cursor-pointer">
+                                            <Icon name="plus" size={24} />
+                                            <span className="text-xs mt-1">點擊上傳</span>
+                                        </div>
+                                    )}
+                                </div>
 
                                 <div className="flex gap-2">
                                     <button onClick={() => setView("home")} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">取消</button>
