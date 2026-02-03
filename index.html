@@ -2,8 +2,23 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>SnapCard AI - 專業人脈管家</title>
+    
+    <!-- PWA 設定開始 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SnapCard">
+    <meta name="theme-color" content="#2563eb">
+    
+    <!-- App Icon (SVG Data URI) -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='grad' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233b82f6' /%3E%3Cstop offset='100%25' stop-color='%232563eb' /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='128' fill='url(%23grad)'/%3E%3Crect x='106' y='156' width='300' height='200' rx='20' fill='white'/%3E%3Ccircle cx='340' cy='210' r='30' fill='%23e5e7eb'/%3E%3Crect x='146' y='196' width='120' height='24' rx='6' fill='%23d1d5db'/%3E%3Crect x='146' y='240' width='200' height='16' rx='4' fill='%23e5e7eb'/%3E%3Crect x='146' y='270' width='180' height='16' rx='4' fill='%23e5e7eb'/%3E%3C/svg%3E">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='grad' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233b82f6' /%3E%3Cstop offset='100%25' stop-color='%232563eb' /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='128' fill='url(%23grad)'/%3E%3Crect x='106' y='156' width='300' height='200' rx='20' fill='white'/%3E%3Ccircle cx='340' cy='210' r='30' fill='%23e5e7eb'/%3E%3Crect x='146' y='196' width='120' height='24' rx='6' fill='%23d1d5db'/%3E%3Crect x='146' y='240' width='200' height='16' rx='4' fill='%23e5e7eb'/%3E%3Crect x='146' y='270' width='180' height='16' rx='4' fill='%23e5e7eb'/%3E%3C/svg%3E">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22SnapCard%20AI%22%2C%22short_name%22%3A%22SnapCard%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23ffffff%22%2C%22theme_color%22%3A%22%232563eb%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20512%20512'%253E%253Cdefs%253E%253ClinearGradient%20id%3D'grad'%20x1%3D'0%25'%20y1%3D'0%25'%20x2%3D'100%25'%20y2%3D'100%25'%253E%253Cstop%20offset%3D'0%25'%20stop-color%3D'%25233b82f6'%20%2F%253E%253Cstop%20offset%3D'100%25'%20stop-color%3D'%25232563eb'%20%2F%253E%253C%2FlinearGradient%253E%253C%2Fdefs%253E%253Crect%20width%3D'512'%20height%3D'512'%20rx%3D'128'%20fill%3D'url(%2523grad)'%2F%253E%253Crect%20x%3D'106'%20y%3D'156'%20width%3D'300'%20height%3D'200'%20rx%3D'20'%20fill%3D'white'%2F%253E%253Ccircle%20cx%3D'340'%20cy%3D'210'%20r%3D'30'%20fill%3D'%2523e5e7eb'%2F%253E%253Crect%20x%3D'146'%20y%3D'196'%20width%3D'120'%20height%3D'24'%20rx%3D'6'%20fill%3D'%2523d1d5db'%2F%253E%253Crect%20x%3D'146'%20y%3D'240'%20width%3D'200'%20height%3D'16'%20rx%3D'4'%20fill%3D'%2523e5e7eb'%2F%253E%253Crect%20x%3D'146'%20y%3D'270'%20width%3D'180'%20height%3D'16'%20rx%3D'4'%20fill%3D'%2523e5e7eb'%2F%253E%253C%2Fsvg%253E%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
+    <!-- PWA 設定結束 -->
+
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -13,6 +28,8 @@
     <style>
         body { background-color: #f8fafc; color: #1e293b; margin: 0; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
+        /* PWA 全螢幕時的底部安全區 */
+        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
     </style>
 </head>
 <body>
@@ -156,7 +173,7 @@
                             <div className="w-3/4 aspect-[1.6/1] border-2 border-blue-500 rounded-xl shadow-[0_0_0_999px_rgba(0,0,0,0.5)]"></div>
                         </div>
                     </div>
-                    <div className="h-32 bg-black flex items-center justify-center gap-8">
+                    <div className="h-32 bg-black flex items-center justify-center gap-8 safe-area-bottom">
                         <button onClick={onCancel} className="text-white font-bold p-4">取消</button>
                         <button onClick={capture} className="w-16 h-16 bg-white rounded-full border-4 border-gray-300"></button>
                         <div className="w-12"></div>
@@ -250,14 +267,14 @@
 
             return (
                 <div className="max-w-md mx-auto h-screen bg-gray-50 flex flex-col font-sans overflow-hidden border-x border-gray-200">
-                    <header className="px-6 pt-12 pb-4 bg-white shadow-sm flex justify-between items-center z-10">
+                    <header className="px-6 pt-12 pb-4 bg-white shadow-sm flex justify-between items-center z-10 pt-safe-top">
                         <h1 className="text-xl font-black text-blue-600 tracking-tighter">SNAPCARD</h1>
                         <button onClick={() => setView("settings")} className="text-gray-400">
                             <Icon name="settings" />
                         </button>
                     </header>
 
-                    <main className="flex-1 overflow-y-auto p-4 relative">
+                    <main className="flex-1 overflow-y-auto p-4 relative pb-safe-bottom">
                         {error && <div className="bg-red-100 text-red-600 p-3 rounded-lg mb-4 text-xs font-bold">{error}</div>}
 
                         {view === "home" && (
@@ -367,7 +384,7 @@
                     </main>
 
                     {view === "home" && (
-                        <div className="fixed bottom-6 left-0 w-full flex justify-center pointer-events-none">
+                        <div className="fixed bottom-6 left-0 w-full flex justify-center pointer-events-none safe-area-bottom">
                             <button onClick={() => apiKey ? setView("scan") : setView("settings")} className="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform pointer-events-auto border-4 border-white hover:bg-blue-700">
                                 <Icon name="camera" size={32} />
                             </button>
