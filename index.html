@@ -13,6 +13,17 @@
     <style>
         body { background-color: #f8fafc; color: #1e293b; margin: 0; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
+        /* 強制影片滿版且最上層 */
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 10;
+            transform: scaleX(1); /* 確保後鏡頭不鏡像 */
+        }
     </style>
 </head>
 <body>
@@ -211,12 +222,11 @@
                 setIsProcessing(true);
                 setError(null);
                 
-                // 定義模型列表 (優先順序：2.0實驗版 -> 1.5標準 -> 1.5輕量 -> 2.5預覽)
-                // 2.0-flash-exp 通常有額外的配額池，先試試看
+                // 定義模型列表 (優先順序)
                 const models = [
-                    "gemini-2.0-flash-exp",
                     "gemini-1.5-flash",
                     "gemini-1.5-flash-8b",
+                    "gemini-1.5-flash-002",
                     "gemini-2.5-flash-preview-09-2025"
                 ];
 
@@ -232,7 +242,14 @@
                     }];
                 }
 
-                const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。category從[工作,家人,同學,朋友]選。note欄位保留空白讓使用者填寫。無Markdown。`;
+                // 修正：強化提示詞，要求整合正反面資訊
+                const promptText = `分析名片圖片(包含正反面)。請將正反兩面的資訊整合。
+特別注意：
+1. 姓名欄位請同時包含中文與英文姓名(例如: "王小明 David Wang")。
+2. 公司欄位請同時包含中文與英文名稱(例如: "台積電 TSMC")。
+3. 若有不同語言的職稱也請合併。
+回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。
+category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdown。`;
 
                 // 遞迴嘗試模型
                 const tryModel = async (index) => {
@@ -260,7 +277,6 @@
                         if (!res.ok) {
                             if ([404, 429, 500, 503].includes(res.status)) {
                                 console.warn(`Model ${model} failed (${res.status}), trying next...`);
-                                // 智慧等待：在切換前等待 2 秒，降低頻率
                                 await new Promise(r => setTimeout(r, 2000));
                                 return await tryModel(index + 1);
                             }
