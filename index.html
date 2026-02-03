@@ -163,10 +163,11 @@
             const [cards, setCards] = useState(() => {
                 try { return JSON.parse(localStorage.getItem("snapcard_cards") || "[]"); } catch { return []; }
             });
-            const [tempScans, setTempScans] = useState([]); // 暫存拍攝的照片 (支援正反面)
-            const [capturedImage, setCapturedImage] = useState(null); // 最終正面
+            const [tempScans, setTempScans] = useState([]); 
+            const [capturedImage, setCapturedImage] = useState(null); // 正面
+            const [backImage, setBackImage] = useState(null); // 背面 (新增)
             const [currentAvatar, setCurrentAvatar] = useState(null);
-            const [secondImage, setSecondImage] = useState(null); // 最終背面/附加
+            const [additionalImage, setAdditionalImage] = useState(null); // 附加照片 (原 secondImage)
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState({});
             const [currentCardId, setCurrentCardId] = useState(null);
@@ -175,7 +176,7 @@
             const [tempKey, setTempKey] = useState("");
             const [error, setError] = useState(null);
             const avatarInputRef = useRef(null);
-            const secondImageInputRef = useRef(null);
+            const additionalImageInputRef = useRef(null);
             const [searchQuery, setSearchQuery] = useState(""); 
 
             useEffect(() => {
@@ -189,9 +190,8 @@
                     if (window.lucide) window.lucide.createIcons();
                 }, 50);
                 return () => clearTimeout(timer);
-            }, [view, cards, tempScans, resultData]);
+            }, [view, cards, tempScans, resultData, additionalImage, backImage]);
 
-            // 開始掃描流程
             const startScanFlow = () => {
                 if (!apiKey) {
                     setView("settings");
@@ -201,30 +201,26 @@
                 setView("scan");
             };
 
-            // 處理拍照
             const handleScanCapture = (base64) => {
                 const newScans = [...tempScans, base64];
                 setTempScans(newScans);
                 setView("check_scans");
             };
 
-            // 呼叫 AI 辨識
             const analyze = async () => {
                 setIsProcessing(true);
                 try {
-                    // 準備圖片 payload
                     const imageParts = tempScans.map(img => ({
                         inlineData: { mimeType: "image/jpeg", data: img.split(',')[1] }
                     }));
 
-                    // 修正：使用 gemini-2.5-flash-preview-09-2025 以符合環境支援
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             contents: [{ 
                                 parts: [
-                                    { text: `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。若有兩張圖代表正反面，請整合資訊。姓名若有中英文請合併(如: 王小明 David Wang)。公司名稱若有中英文請合併。category從[工作,家人,同學,朋友]選。無Markdown。` },
+                                    { text: `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。若有兩張圖代表正反面，請整合資訊。company欄位請包含中文及英文名稱(若有)。category從[工作,家人,同學,朋友]選。note欄位保留空白讓使用者填寫。無Markdown。` },
                                     ...imageParts
                                 ] 
                             }]
@@ -245,9 +241,10 @@
                     
                     setResultData(data || { category: "工作" });
                     
-                    // 分配圖片：第一張為正面，第二張(若有)為附加照片
+                    // 分配圖片：第一張正面，第二張背面
                     setCapturedImage(tempScans[0]);
-                    setSecondImage(tempScans[1] || null);
+                    setBackImage(tempScans[1] || null);
+                    setAdditionalImage(null); // 掃描時不設定附加照片，那是手動的
                     
                     setCurrentAvatar(null);
                     setCurrentCardId(null);
@@ -264,9 +261,10 @@
                 const newData = { 
                     id: currentCardId || Date.now(), 
                     ...resultData, 
-                    image: capturedImage, 
+                    image: capturedImage, // 正面
+                    backImage: backImage, // 背面
                     avatar: currentAvatar,
-                    secondImage: secondImage, 
+                    additionalImage: additionalImage, // 附加
                     category: resultData.category || "工作" 
                 };
                 
@@ -287,11 +285,11 @@
                 }
             };
 
-            const handleSecondImageUpload = async (e) => {
+            const handleAdditionalImageUpload = async (e) => {
                 if (e.target.files[0]) {
                     try {
                         const base64 = await compressImage(e.target.files[0]);
-                        setSecondImage(base64);
+                        setAdditionalImage(base64);
                     } catch(err) { alert("圖片處理失敗"); }
                 }
             };
@@ -299,8 +297,10 @@
             const viewSavedCard = (card) => {
                 setResultData({...card});
                 setCapturedImage(card.image);
+                setBackImage(card.backImage || null);
                 setCurrentAvatar(card.avatar);
-                setSecondImage(card.secondImage);
+                // 相容舊資料：如果沒有 additionalImage 但有 secondImage (舊版背面/附加)，則對應過來
+                setAdditionalImage(card.additionalImage || card.secondImage || null); 
                 setCurrentCardId(card.id);
                 setView("result");
             };
@@ -341,7 +341,6 @@
                                     </div>
                                 )}
                                 
-                                {/* 搜尋列 */}
                                 <div className="relative">
                                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                                         <Icon name="search" size={16} />
@@ -354,10 +353,7 @@
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                     />
                                     {searchQuery && (
-                                        <button 
-                                            onClick={() => setSearchQuery("")}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 p-1"
-                                        >
+                                        <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 p-1">
                                             <Icon name="x" size={14} />
                                         </button>
                                     )}
@@ -403,7 +399,6 @@
                             </div>
                         )}
 
-                        {/* 掃描預覽/確認頁面 */}
                         {view === "check_scans" && (
                             <div className="h-full flex flex-col p-4 space-y-4">
                                 <div className="flex-1 overflow-y-auto space-y-4">
@@ -472,48 +467,59 @@
                                         ))}
                                         <div className="flex items-start gap-3 border-b pb-1">
                                             <div className="mt-1"><Icon name="file-text" className="text-gray-400" /></div>
-                                            <textarea 
-                                                className="flex-1 bg-transparent text-sm font-medium outline-none resize-none h-20"
-                                                value={resultData.note || ""}
-                                                placeholder="填寫備註..."
-                                                onChange={e => setResultData({...resultData, note: e.target.value})}
-                                            />
+                                            <textarea className="flex-1 bg-transparent text-sm font-medium outline-none resize-none h-20" value={resultData.note || ""} placeholder="填寫備註..." onChange={e => setResultData({...resultData, note: e.target.value})} />
                                             <div className="mt-1"><Icon name="pencil" size={14} className="text-gray-300" /></div>
                                         </div>
                                     </div>
                                 </div>
 
-                                {capturedImage && (
-                                    <div className="bg-white p-4 rounded-xl shadow-sm">
-                                        <p className="text-xs font-bold text-gray-400 mb-2">名片快照</p>
-                                        <img src={capturedImage} className="w-full rounded-lg" />
+                                {/* 名片快照 (正反面整合) */}
+                                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                    <p className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
+                                        <Icon name="image" size={14} /> 名片快照
+                                    </p>
+                                    <div className="space-y-2">
+                                        {capturedImage && (
+                                            <div className="relative">
+                                                <img src={capturedImage} className="w-full rounded-lg border border-gray-100" />
+                                                <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">正面</span>
+                                            </div>
+                                        )}
+                                        {backImage && (
+                                            <div className="relative">
+                                                <img src={backImage} className="w-full rounded-lg border border-gray-100" />
+                                                <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">背面</span>
+                                            </div>
+                                        )}
+                                        {!capturedImage && !backImage && <p className="text-gray-300 text-xs text-center py-4">無名片照片</p>}
                                     </div>
-                                )}
+                                </div>
 
+                                {/* 附加照片 */}
                                 <div className="bg-white p-4 rounded-xl shadow-sm">
                                     <div className="flex justify-between items-center mb-2">
                                         <p className="text-xs font-bold text-gray-400">附加照片</p>
                                         <div className="flex gap-2">
-                                            {secondImage && (
-                                                <button onClick={() => setSecondImage(null)} className="text-red-400 text-xs font-bold flex items-center gap-1">
+                                            {additionalImage && (
+                                                <button onClick={() => setAdditionalImage(null)} className="text-red-400 text-xs font-bold flex items-center gap-1">
                                                     <Icon name="trash-2" size={14} /> 刪除
                                                 </button>
                                             )}
-                                            <button onClick={() => secondImageInputRef.current?.click()} className="text-blue-500 text-xs font-bold flex items-center gap-1">
-                                                <Icon name="image-plus" size={14} /> {secondImage ? "更換" : "上傳"}
+                                            <button onClick={() => additionalImageInputRef.current?.click()} className="text-blue-500 text-xs font-bold flex items-center gap-1">
+                                                <Icon name="image-plus" size={14} /> {additionalImage ? "更換" : "上傳"}
                                             </button>
                                         </div>
                                     </div>
-                                    <input type="file" ref={secondImageInputRef} className="hidden" accept="image/*" onChange={handleSecondImageUpload} />
-                                    {secondImage ? (
+                                    <input type="file" ref={additionalImageInputRef} className="hidden" accept="image/*" onChange={handleSecondImageUpload} />
+                                    {additionalImage ? (
                                         <div className="relative">
-                                            <img src={secondImage} className="w-full rounded-lg border border-gray-100" />
-                                            <button onClick={() => setSecondImage(null)} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow-md border-2 border-white hover:bg-red-600">
+                                            <img src={additionalImage} className="w-full rounded-lg border border-gray-100" />
+                                            <button onClick={() => setAdditionalImage(null)} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow-md border-2 border-white hover:bg-red-600">
                                                 <Icon name="trash-2" size={14} />
                                             </button>
                                         </div>
                                     ) : (
-                                        <div onClick={() => secondImageInputRef.current?.click()} className="w-full h-32 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-300 cursor-pointer hover:bg-gray-100 transition-colors">
+                                        <div onClick={() => additionalImageInputRef.current?.click()} className="w-full h-32 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-300 cursor-pointer hover:bg-gray-100 transition-colors">
                                             <Icon name="plus" size={24} />
                                             <span className="text-xs mt-1">點擊上傳</span>
                                         </div>
@@ -521,7 +527,7 @@
                                 </div>
 
                                 <div className="flex gap-2">
-                                    <button onClick={() => { setView("home"); setTempScans([]); }} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">取消</button>
+                                    <button onClick={() => setView("home")} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">取消</button>
                                     <button onClick={saveCard} className="flex-[2] bg-blue-600 text-white p-3 rounded-xl font-bold flex justify-center items-center gap-2">
                                         <Icon name="save" /> 儲存
                                     </button>
