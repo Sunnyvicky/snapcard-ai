@@ -44,24 +44,31 @@
             }
         }
 
-        // --- 安全的 Icon 元件 ---
+        // --- 安全的 Icon 元件 (黑盒子模式) ---
+        // React 建立容器，Lucide 負責填內容，互不干擾
         const Icon = ({ name, size = 20, className = "" }) => {
             const ref = useRef(null);
 
             useEffect(() => {
                 if (!ref.current || !window.lucide) return;
+
+                // 1. 清空容器
                 const container = ref.current;
                 container.innerHTML = '';
+
+                // 2. 建立 Lucide 需要的標籤
                 const i = document.createElement('i');
                 i.setAttribute('data-lucide', name);
                 container.appendChild(i);
+
+                // 3. 呼叫 Lucide 渲染，並限制範圍在目前的容器內
                 window.lucide.createIcons({
                     root: container,
                     nameAttr: 'data-lucide',
                     attrs: {
                         width: size,
                         height: size,
-                        class: className 
+                        class: className // 將 className 傳給 SVG
                     }
                 });
             }, [name, size, className]);
@@ -69,7 +76,7 @@
             return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center' }}></span>;
         };
 
-        // --- 極致安全壓縮 ---
+        // --- 極致安全壓縮 (Object URL) ---
         const compressImage = (file) => {
             return new Promise((resolve, reject) => {
                 if (!file) return reject("無檔案");
@@ -165,17 +172,17 @@
             });
             const [capturedImage, setCapturedImage] = useState(null);
             const [currentAvatar, setCurrentAvatar] = useState(null);
-            const [secondImage, setSecondImage] = useState(null);
+            const [secondImage, setSecondImage] = useState(null); // 新增：第二張照片
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState({});
             const [currentCardId, setCurrentCardId] = useState(null);
             const [filterCategory, setFilterCategory] = useState("全部");
-            const [searchQuery, setSearchQuery] = useState(""); // 新增：搜尋關鍵字狀態
             const [apiKey, setApiKey] = useState(() => localStorage.getItem("snapcard_api_key") || "");
             const [tempKey, setTempKey] = useState("");
             const [error, setError] = useState(null);
             const avatarInputRef = useRef(null);
-            const secondImageInputRef = useRef(null);
+            const secondImageInputRef = useRef(null); // 新增：第二張照片的 ref
+            const [searchQuery, setSearchQuery] = useState(""); // 新增：搜尋關鍵字狀態
 
             useEffect(() => {
                 try { localStorage.setItem("snapcard_cards", JSON.stringify(cards)); }
@@ -190,7 +197,7 @@
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             contents: [{ parts: [
-                                { text: `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。category從[工作,家人,同學,朋友]選。note欄位保留空白讓使用者填寫。無Markdown。` },
+                                { text: `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。company欄位請包含中文及英文名稱(若有)。category從[工作,家人,同學,朋友]選。note欄位保留空白讓使用者填寫。無Markdown。` },
                                 { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }
                             ] }]
                         })
@@ -206,7 +213,7 @@
                     setResultData(data || { category: "工作" });
                     setCapturedImage(base64);
                     setCurrentAvatar(null);
-                    setSecondImage(null);
+                    setSecondImage(null); // 重置第二張照片
                     setCurrentCardId(null);
                     setView("result");
                 } catch (e) {
@@ -223,7 +230,7 @@
                     ...resultData, 
                     image: capturedImage, 
                     avatar: currentAvatar,
-                    secondImage: secondImage,
+                    secondImage: secondImage, // 儲存第二張照片
                     category: resultData.category || "工作" 
                 };
                 
@@ -257,7 +264,7 @@
                 setResultData({...card});
                 setCapturedImage(card.image);
                 setCurrentAvatar(card.avatar);
-                setSecondImage(card.secondImage);
+                setSecondImage(card.secondImage); // 載入第二張照片
                 setCurrentCardId(card.id);
                 setView("result");
             };
@@ -314,10 +321,9 @@
                                     )}
                                 </div>
 
-                                {/* 分類過濾 */}
                                 <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar">
                                     {["全部", "工作", "家人", "同學", "朋友"].map(cat => (
-                                        <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${filterCategory === cat ? "bg-blue-600 text-white shadow-sm" : "bg-white text-gray-500 border border-gray-100"}`}>
+                                        <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${filterCategory === cat ? "bg-blue-600 text-white" : "bg-white text-gray-500 border"}`}>
                                             {cat}
                                         </button>
                                     ))}
@@ -329,8 +335,8 @@
                                     </div>
                                 ) : (
                                     filteredCards.map(c => (
-                                        <div key={c.id} onClick={() => viewSavedCard(c)} className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform border border-transparent hover:border-blue-100">
-                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center font-bold text-gray-500 shrink-0 overflow-hidden border border-gray-200">
+                                        <div key={c.id} onClick={() => viewSavedCard(c)} className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform">
+                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border">
                                                 {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
                                             </div>
                                             <div className="flex-1 min-w-0">
@@ -392,9 +398,15 @@
                                                 <Icon name="pencil" size={14} className="text-gray-300" />
                                             </div>
                                         ))}
+                                        {/* 新增：備註欄位 */}
                                         <div className="flex items-start gap-3 border-b pb-1">
                                             <div className="mt-1"><Icon name="file-text" className="text-gray-400" /></div>
-                                            <textarea className="flex-1 bg-transparent text-sm font-medium outline-none resize-none h-20" value={resultData.note || ""} placeholder="填寫備註..." onChange={e => setResultData({...resultData, note: e.target.value})} />
+                                            <textarea 
+                                                className="flex-1 bg-transparent text-sm font-medium outline-none resize-none h-20"
+                                                value={resultData.note || ""}
+                                                placeholder="填寫備註..."
+                                                onChange={e => setResultData({...resultData, note: e.target.value})}
+                                            />
                                             <div className="mt-1"><Icon name="pencil" size={14} className="text-gray-300" /></div>
                                         </div>
                                     </div>
@@ -407,6 +419,7 @@
                                     </div>
                                 )}
 
+                                {/* 新增：附加照片區塊 */}
                                 <div className="bg-white p-4 rounded-xl shadow-sm">
                                     <div className="flex justify-between items-center mb-2">
                                         <p className="text-xs font-bold text-gray-400">附加照片</p>
