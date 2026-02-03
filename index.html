@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SnapCard AI - 安全模式</title>
+    <title>SnapCard AI - 專業人脈管家</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 Lucide -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         body { background-color: #f8fafc; color: #1e293b; margin: 0; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
@@ -18,238 +19,198 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useRef, useEffect } = React;
+        const { useState, useRef, useEffect, Component } = React;
 
-        // --- 極致安全壓縮 (Max 500px) ---
+        // --- 錯誤邊界 ---
+        class ErrorBoundary extends Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="h-screen flex flex-col items-center justify-center p-6 text-center bg-gray-50">
+                            <h2 className="text-xl font-bold text-gray-800 mb-2">發生錯誤</h2>
+                            <p className="text-sm text-gray-500 mb-4">{this.state.error?.message}</p>
+                            <button onClick={() => window.location.reload()} className="bg-blue-600 text-white px-6 py-2 rounded-full">重新整理</button>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        // --- 安全的 Icon 元件 (黑盒子模式) ---
+        // React 建立容器，Lucide 負責填內容，互不干擾
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const ref = useRef(null);
+
+            useEffect(() => {
+                if (!ref.current || !window.lucide) return;
+
+                // 1. 清空容器
+                const container = ref.current;
+                container.innerHTML = '';
+
+                // 2. 建立 Lucide 需要的標籤
+                const i = document.createElement('i');
+                i.setAttribute('data-lucide', name);
+                container.appendChild(i);
+
+                // 3. 呼叫 Lucide 渲染，並限制範圍在目前的容器內
+                window.lucide.createIcons({
+                    root: container,
+                    nameAttr: 'data-lucide',
+                    attrs: {
+                        width: size,
+                        height: size,
+                        class: className // 將 className 傳給 SVG
+                    }
+                });
+            }, [name, size, className]);
+
+            return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center' }}></span>;
+        };
+
+        // --- 極致安全壓縮 (Object URL) ---
         const compressImage = (file) => {
             return new Promise((resolve, reject) => {
                 if (!file) return reject("無檔案");
                 const url = URL.createObjectURL(file);
                 const img = new Image();
                 img.src = url;
-                
                 img.onload = () => {
                     URL.revokeObjectURL(url);
-                    try {
-                        const canvas = document.createElement('canvas');
-                        const MAX_SIZE = 500; // 降至 500px 以確保絕對安全
-                        let width = img.width;
-                        let height = img.height;
+                    const canvas = document.createElement('canvas');
+                    const MAX_SIZE = 600; 
+                    let width = img.width;
+                    let height = img.height;
 
-                        if (width > height) {
-                            if (width > MAX_SIZE) {
-                                height *= MAX_SIZE / width;
-                                width = MAX_SIZE;
-                            }
-                        } else {
-                            if (height > MAX_SIZE) {
-                                width *= MAX_SIZE / height;
-                                height = MAX_SIZE;
-                            }
+                    if (width > height) {
+                        if (width > MAX_SIZE) {
+                            height *= MAX_SIZE / width;
+                            width = MAX_SIZE;
                         }
-
-                        canvas.width = width;
-                        canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, width, height);
-                        
-                        // 低品質輸出以節省 RAM
-                        resolve(canvas.toDataURL('image/jpeg', 0.5)); 
-                    } catch (e) {
-                        reject(e);
+                    } else {
+                        if (height > MAX_SIZE) {
+                            width *= MAX_SIZE / height;
+                            height = MAX_SIZE;
+                        }
                     }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.6)); 
                 };
-                img.onerror = (e) => {
-                    URL.revokeObjectURL(url);
-                    reject(e);
-                };
+                img.onerror = reject;
             });
         };
 
         // --- 相機元件 ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
-            const [debugMsg, setDebugMsg] = useState("啟動中...");
+            const [error, setError] = useState(null);
 
             useEffect(() => {
-                let localStream = null;
-
-                const init = async () => {
-                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                        setDebugMsg("錯誤：不支援相機 API");
-                        return;
-                    }
-
+                let stream = null;
+                const startCamera = async () => {
                     try {
-                        setDebugMsg("請求相機...");
-                        // 請求最低解析度 VGA
-                        const stream = await navigator.mediaDevices.getUserMedia({ 
-                            video: { 
-                                facingMode: { ideal: "environment" },
-                                width: { ideal: 640 }, 
-                                height: { ideal: 480 }
-                            },
-                            audio: false 
+                        stream = await navigator.mediaDevices.getUserMedia({
+                            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+                            audio: false
                         });
-                        
-                        localStream = stream;
-                        
                         if (videoRef.current) {
                             videoRef.current.srcObject = stream;
-                            // iOS Safari 關鍵屬性
-                            videoRef.current.setAttribute('playsinline', 'true');
-                            videoRef.current.setAttribute('webkit-playsinline', 'true');
-                            
-                            videoRef.current.play().then(() => {
-                                setDebugMsg("");
-                            }).catch(e => {
-                                setDebugMsg("播放失敗: " + e.message);
-                            });
+                            videoRef.current.play().catch(e => console.error("Play error", e));
                         }
-                    } catch (err) {
-                        setDebugMsg("相機錯誤: " + err.message);
+                    } catch (e) {
+                        setError("無法啟動相機: " + e.message);
                     }
                 };
-
-                init();
-
+                startCamera();
                 return () => {
-                    if (localStream) localStream.getTracks().forEach(t => t.stop());
+                    if (stream) stream.getTracks().forEach(t => t.stop());
                 };
             }, []);
 
-            const handleCapture = () => {
-                if (videoRef.current && videoRef.current.readyState >= 2) {
-                    try {
-                        const video = videoRef.current;
-                        const canvas = document.createElement("canvas");
-                        
-                        // 強制縮小
-                        const MAX_SIZE = 500;
-                        let width = video.videoWidth || 640;
-                        let height = video.videoHeight || 480;
-
-                        if (width > height) {
-                            if (width > MAX_SIZE) {
-                                height *= MAX_SIZE / width;
-                                width = MAX_SIZE;
-                            }
-                        } else {
-                            if (height > MAX_SIZE) {
-                                width *= MAX_SIZE / height;
-                                height = MAX_SIZE;
-                            }
-                        }
-
-                        canvas.width = width;
-                        canvas.height = height;
-                        
-                        const ctx = canvas.getContext("2d");
-                        ctx.drawImage(video, 0, 0, width, height);
-                        
-                        const base64 = canvas.toDataURL("image/jpeg", 0.5);
-                        onCapture(base64);
-                    } catch (e) {
-                        alert("截圖失敗(記憶體不足): " + e.message);
-                    }
-                } else {
-                    setDebugMsg("相機未就緒...");
-                }
+            const capture = () => {
+                if (!videoRef.current) return;
+                const canvas = document.createElement("canvas");
+                canvas.width = videoRef.current.videoWidth;
+                canvas.height = videoRef.current.videoHeight;
+                canvas.getContext("2d").drawImage(videoRef.current, 0, 0);
+                onCapture(canvas.toDataURL("image/jpeg", 0.6));
             };
 
             return (
                 <div className="fixed inset-0 bg-black z-50 flex flex-col">
-                    {debugMsg && (
-                        <div className="absolute top-4 left-0 w-full text-center z-50">
-                            <span className="bg-black/70 text-white text-xs px-2 py-1 rounded">{debugMsg}</span>
-                        </div>
-                    )}
-
-                    <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-black">
-                        <video 
-                            ref={videoRef} 
-                            autoPlay 
-                            playsInline 
-                            webkit-playsinline="true"
-                            muted 
-                            className="absolute inset-0 w-full h-full object-cover"
-                        />
-                        <div className="relative w-3/4 aspect-[1.6/1] border-2 border-blue-500 rounded-xl shadow-[0_0_0_999px_rgba(0,0,0,0.5)] z-10 pointer-events-none">
-                            <div className="absolute top-0 left-0 w-full h-0.5 bg-blue-400 animate-pulse"></div>
+                    <div className="flex-1 relative overflow-hidden">
+                        <video ref={videoRef} playsInline muted autoPlay className="w-full h-full object-cover" />
+                        {error && <div className="absolute inset-0 flex items-center justify-center text-white bg-black/80">{error}</div>}
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="w-3/4 aspect-[1.6/1] border-2 border-blue-500 rounded-xl shadow-[0_0_0_999px_rgba(0,0,0,0.5)]"></div>
                         </div>
                     </div>
-
-                    <div className="h-32 bg-black flex items-center justify-center gap-12 z-50">
-                        <button onClick={onCancel} className="text-gray-400 font-bold p-4">取消</button>
-                        <button 
-                            onClick={handleCapture}
-                            className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 active:scale-95 transition-transform flex items-center justify-center"
-                        >
-                            <div className="w-14 h-14 bg-white rounded-full border-2 border-black/10"></div>
-                        </button>
+                    <div className="h-32 bg-black flex items-center justify-center gap-8">
+                        <button onClick={onCancel} className="text-white font-bold p-4">取消</button>
+                        <button onClick={capture} className="w-16 h-16 bg-white rounded-full border-4 border-gray-300"></button>
                         <div className="w-12"></div>
                     </div>
                 </div>
             );
         };
 
-        // --- 主程式 ---
         function App() {
-            const [view, setView] = useState("home"); 
+            const [view, setView] = useState("home");
             const [cards, setCards] = useState(() => {
-                try {
-                    return JSON.parse(localStorage.getItem("snapcard_local_cards") || "[]");
-                } catch (e) { return []; }
+                try { return JSON.parse(localStorage.getItem("snapcard_cards") || "[]"); } catch { return []; }
             });
             const [capturedImage, setCapturedImage] = useState(null);
             const [currentAvatar, setCurrentAvatar] = useState(null);
             const [isProcessing, setIsProcessing] = useState(false);
-            const [resultData, setResultData] = useState(null);
-            const [error, setError] = useState(null);
+            const [resultData, setResultData] = useState({});
             const [currentCardId, setCurrentCardId] = useState(null);
             const [filterCategory, setFilterCategory] = useState("全部");
-            
-            const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem("snapcard_gemini_key") || "");
-            const [tempKeyInput, setTempKeyInput] = useState("");
+            const [apiKey, setApiKey] = useState(() => localStorage.getItem("snapcard_api_key") || "");
+            const [tempKey, setTempKey] = useState("");
+            const [error, setError] = useState(null);
             const avatarInputRef = useRef(null);
 
             useEffect(() => {
-                try {
-                    localStorage.setItem("snapcard_local_cards", JSON.stringify(cards));
-                } catch (e) {
-                    setError("儲存空間不足，請刪除舊資料！");
-                }
+                try { localStorage.setItem("snapcard_cards", JSON.stringify(cards)); }
+                catch (e) { setError("儲存空間已滿"); }
             }, [cards]);
 
-            useEffect(() => lucide.createIcons(), [view, cards, resultData, filterCategory, currentAvatar]);
-
-            const analyze = async (image) => {
+            const analyze = async (base64) => {
                 setIsProcessing(true);
-                setError(null);
-                
                 try {
-                    const prompt = `分析名片，回傳JSON：{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作"}。category從[工作,家人,同學,朋友]選。無Markdown。`;
-                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${customApiKey}`, {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: image.split(',')[1] } }] }]
+                            contents: [{ parts: [
+                                { text: `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作"}。category從[工作,家人,同學,朋友]選。無Markdown。` },
+                                { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }
+                            ] }]
                         })
                     });
-                    
                     const json = await res.json();
-                    if(json.error) throw new Error(json.error.message);
+                    if (json.error) throw new Error(json.error.message);
                     
                     let text = json.candidates[0].content.parts[0].text;
                     text = text.replace(/```json|```/g, '').trim();
-                    const start = text.indexOf('{');
-                    const end = text.lastIndexOf('}');
-                    
+                    const start = text.indexOf('{'), end = text.lastIndexOf('}');
                     const data = JSON.parse(text.substring(start, end + 1));
-                    if (!data.category) data.category = "工作";
                     
-                    setResultData(data);
-                    setCurrentAvatar(null); 
+                    setResultData(data || { category: "工作" });
+                    setCapturedImage(base64);
+                    setCurrentAvatar(null);
+                    setCurrentCardId(null);
                     setView("result");
                 } catch (e) {
                     setError("辨識失敗: " + e.message);
@@ -260,93 +221,40 @@
             };
 
             const saveCard = () => {
-                try {
-                    const cardData = {
-                        ...resultData,
-                        image: capturedImage, 
-                        avatar: currentAvatar,
-                        category: resultData.category || "工作"
-                    };
-
-                    // 先測試空間
-                    const testString = JSON.stringify(cardData);
-                    if (testString.length > 500000) throw new Error("圖片過大");
-
-                    if (currentCardId) {
-                        setCards(cards.map(c => c.id === currentCardId ? { ...c, ...cardData } : c));
-                    } else {
-                        setCards([{ id: Date.now(), ...cardData }, ...cards]);
-                    }
-                    cleanupAndHome();
-                } catch (e) {
-                    alert("儲存失敗：資料過大或空間不足。請嘗試不上傳頭像。");
+                const newData = { 
+                    id: currentCardId || Date.now(), 
+                    ...resultData, 
+                    image: capturedImage, 
+                    avatar: currentAvatar,
+                    category: resultData.category || "工作" 
+                };
+                
+                if (currentCardId) {
+                    setCards(cards.map(c => c.id === currentCardId ? newData : c));
+                } else {
+                    setCards([newData, ...cards]);
                 }
-            };
-
-            const deleteCurrentCard = () => {
-                if(confirm("確定要刪除這張名片嗎？")) {
-                    setCards(cards.filter(c => c.id !== currentCardId));
-                    cleanupAndHome();
-                }
-            };
-
-            const viewSavedCard = (card) => {
-                setResultData({...card});
-                setCapturedImage(card.image);
-                setCurrentAvatar(card.avatar);
-                setCurrentCardId(card.id);
-                setView("result");
-            };
-
-            const cleanupAndHome = () => {
                 setView("home");
-                setCapturedImage(null);
-                setCurrentAvatar(null);
-                setResultData(null);
-                setCurrentCardId(null);
             };
 
             const handleAvatarUpload = async (e) => {
-                const file = e.target.files[0];
-                if (file) {
+                if (e.target.files[0]) {
                     try {
-                        // 使用新的 Object URL 壓縮方法
-                        const compressedBase64 = await compressImage(file);
-                        setCurrentAvatar(compressedBase64);
-                        e.target.value = ''; 
-                    } catch (err) {
-                        alert("圖片處理失敗");
-                        console.error(err);
-                    }
+                        const base64 = await compressImage(e.target.files[0]);
+                        setCurrentAvatar(base64);
+                    } catch(err) { alert("圖片處理失敗"); }
                 }
             };
 
-            const getCategoryColor = (cat) => {
-                switch(cat) {
-                    case '家人': return 'bg-pink-100 text-pink-600 border-pink-200';
-                    case '同學': return 'bg-green-100 text-green-600 border-green-200';
-                    case '朋友': return 'bg-orange-100 text-orange-600 border-orange-200';
-                    default: return 'bg-blue-100 text-blue-600 border-blue-200';
-                }
-            };
-
-            const filteredCards = filterCategory === "全部" 
-                ? cards 
-                : cards.filter(c => c.category === filterCategory);
-
-            const clearAllData = () => {
-                if(confirm("警告：這將刪除所有資料。確定嗎？")) {
-                    setCards([]);
-                    localStorage.removeItem("snapcard_local_cards");
-                    alert("資料已清空");
-                }
-            };
+            const filteredCards = filterCategory === "全部" ? cards : cards.filter(c => c.category === filterCategory);
 
             return (
-                <div className="max-w-md mx-auto h-screen bg-gray-50 flex flex-col font-sans overflow-hidden">
-                    <header className="px-6 pt-12 pb-2 bg-white shadow-sm flex justify-between items-center z-10">
-                        <h1 className="text-xl font-black text-blue-600">SNAPCARD</h1>
-                        <button onClick={() => setView("settings")}><i data-lucide="settings" className="w-5 h-5 text-gray-400"></i></button>
+                <div className="max-w-md mx-auto h-screen bg-gray-50 flex flex-col font-sans overflow-hidden border-x border-gray-200">
+                    <header className="px-6 pt-12 pb-4 bg-white shadow-sm flex justify-between items-center z-10">
+                        <h1 className="text-xl font-black text-blue-600 tracking-tighter">SNAPCARD</h1>
+                        <button onClick={() => setView("settings")} className="text-gray-400">
+                            <Icon name="settings" />
+                        </button>
                     </header>
 
                     <main className="flex-1 overflow-y-auto p-4 relative">
@@ -354,60 +262,40 @@
 
                         {view === "home" && (
                             <div className="space-y-4">
-                                {!customApiKey && (
-                                    <div onClick={() => setView("settings")} className="bg-blue-50 p-4 rounded-xl text-blue-600 text-center text-sm font-bold cursor-pointer border border-blue-100">
-                                        👉 點此設定 API Key 才能開始
+                                {!apiKey && (
+                                    <div onClick={() => setView("settings")} className="bg-blue-50 p-4 rounded-xl text-blue-600 text-center text-sm font-bold cursor-pointer border border-blue-100 animate-pulse">
+                                        👉 請先設定 API Key
                                     </div>
                                 )}
-
+                                
                                 <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar">
                                     {["全部", "工作", "家人", "同學", "朋友"].map(cat => (
-                                        <button
-                                            key={cat}
-                                            onClick={() => setFilterCategory(cat)}
-                                            className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${
-                                                filterCategory === cat 
-                                                ? "bg-blue-600 text-white shadow-md" 
-                                                : "bg-white text-gray-500 border border-gray-100"
-                                            }`}
-                                        >
+                                        <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${filterCategory === cat ? "bg-blue-600 text-white" : "bg-white text-gray-500 border"}`}>
                                             {cat}
                                         </button>
                                     ))}
                                 </div>
 
                                 {filteredCards.length === 0 ? (
-                                    <div className="text-center py-20 text-gray-400 text-sm">
-                                        {cards.length === 0 ? "暫無名片" : "此分類下沒有名片"}
-                                    </div>
+                                    <div className="text-center py-20 text-gray-400 text-sm">暫無名片</div>
                                 ) : (
                                     filteredCards.map(c => (
-                                        <div 
-                                            key={c.id} 
-                                            onClick={() => viewSavedCard(c)}
-                                            className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform border border-transparent hover:border-blue-100"
-                                        >
-                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center font-bold text-gray-500 shrink-0 overflow-hidden border border-gray-200">
-                                                {c.avatar ? (
-                                                    <img src={c.avatar} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    c.name?.[0]
-                                                )}
+                                        <div key={c.id} onClick={() => {
+                                            setResultData(c);
+                                            setCapturedImage(c.image);
+                                            setCurrentAvatar(c.avatar);
+                                            setCurrentCardId(c.id);
+                                            setView("result");
+                                        }} className="bg-white p-4 rounded-xl shadow-sm flex gap-4 items-center cursor-pointer active:scale-95 transition-transform">
+                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border">
+                                                {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
                                             </div>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="font-bold truncate text-gray-800">{c.name}</div>
-                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded border ${getCategoryColor(c.category)}`}>
-                                                        {c.category || '工作'}
-                                                    </span>
-                                                </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-bold truncate">{c.name}</div>
                                                 <div className="text-xs text-gray-400 truncate">{c.company}</div>
                                             </div>
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); if(confirm("確定要刪除這張名片嗎？")) setCards(cards.filter(x => x.id !== c.id)); }} 
-                                                className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                                            >
-                                                <i data-lucide="trash-2" className="w-5 h-5"></i>
+                                            <button onClick={(e) => { e.stopPropagation(); if(confirm("刪除?")) setCards(cards.filter(x => x.id !== c.id)); }} className="text-gray-300 hover:text-red-500">
+                                                <Icon name="trash-2" />
                                             </button>
                                         </div>
                                     ))
@@ -416,143 +304,63 @@
                         )}
 
                         {view === "settings" && (
-                            <div className="p-4 bg-white rounded-xl shadow-sm space-y-6">
-                                <div>
-                                    <h3 className="font-bold mb-2">API 設定</h3>
-                                    <input 
-                                        className="w-full bg-gray-100 p-2 rounded text-sm mb-4" 
-                                        placeholder="貼上 Gemini API Key" 
-                                        value={tempKeyInput}
-                                        onChange={e => setTempKeyInput(e.target.value)}
-                                    />
-                                    <button onClick={() => {
-                                        localStorage.setItem("snapcard_gemini_key", tempKeyInput);
-                                        setCustomApiKey(tempKeyInput);
-                                        setView("home");
-                                    }} className="w-full bg-blue-600 text-white p-2 rounded font-bold">儲存設定</button>
-                                </div>
-                                <div className="pt-4 border-t border-gray-100">
-                                    <h3 className="font-bold mb-2 text-red-500">危險區域</h3>
-                                    <button onClick={clearAllData} className="w-full bg-red-50 text-red-500 p-2 rounded font-bold text-sm border border-red-100">
-                                        清空所有名片資料
-                                    </button>
-                                </div>
+                            <div className="p-4 bg-white rounded-xl shadow-sm space-y-4">
+                                <h3 className="font-bold">API 設定</h3>
+                                <input className="w-full bg-gray-100 p-2 rounded text-sm" placeholder="輸入 API Key" value={tempKey} onChange={e => setTempKey(e.target.value)} />
+                                <button onClick={() => { localStorage.setItem("snapcard_api_key", tempKey); setApiKey(tempKey); setView("home"); }} className="w-full bg-blue-600 text-white p-2 rounded font-bold">儲存</button>
+                                <button onClick={() => { if(confirm("清空?")) { setCards([]); localStorage.removeItem("snapcard_cards"); } }} className="w-full text-red-500 p-2 text-xs">清空所有資料</button>
                             </div>
                         )}
 
-                        {view === "result" && resultData && (
-                            <div className="space-y-4 pb-32">
-                                <div className="bg-white p-6 rounded-2xl shadow-lg border-t-4 border-blue-500 relative">
+                        {view === "result" && (
+                            <div className="space-y-4 pb-20">
+                                <div className="bg-white p-6 rounded-2xl shadow-lg border-t-4 border-blue-500">
                                     <div className="flex items-center gap-4 mb-6">
-                                        <div 
-                                            className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center text-blue-300 font-bold text-2xl overflow-hidden border-4 border-white shadow-md shrink-0 cursor-pointer relative group"
-                                            onClick={() => avatarInputRef.current?.click()}
-                                        >
-                                            {currentAvatar ? (
-                                                <img src={currentAvatar} className="w-full h-full object-cover" />
-                                            ) : (
-                                                <i data-lucide="camera" className="w-8 h-8"></i>
-                                            )}
-                                            <div className="absolute inset-0 bg-black/20 hidden group-hover:flex items-center justify-center">
-                                                <i data-lucide="upload" className="w-6 h-6 text-white"></i>
-                                            </div>
+                                        <div onClick={() => avatarInputRef.current?.click()} className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center overflow-hidden border-4 border-white shadow-md shrink-0 cursor-pointer">
+                                            {currentAvatar ? <img src={currentAvatar} className="w-full h-full object-cover" /> : <Icon name="camera" size={32} className="text-blue-300" />}
                                         </div>
-                                        <input 
-                                            type="file" 
-                                            ref={avatarInputRef} 
-                                            className="hidden" 
-                                            accept="image/*" 
-                                            onChange={handleAvatarUpload}
-                                        />
-
-                                        <div className="flex-1 min-w-0">
-                                            <input 
-                                                className="text-xl font-black text-gray-800 w-full bg-transparent border-b border-transparent focus:border-blue-200 focus:outline-none placeholder-gray-300"
-                                                value={resultData.name || ""}
-                                                placeholder="輸入姓名"
-                                                onChange={(e) => setResultData({...resultData, name: e.target.value})}
-                                            />
-                                            <input 
-                                                className="text-blue-500 font-bold text-sm w-full bg-transparent border-b border-transparent focus:border-blue-200 focus:outline-none mt-1 placeholder-blue-200"
-                                                value={resultData.jobTitle || ""}
-                                                placeholder="輸入職稱"
-                                                onChange={(e) => setResultData({...resultData, jobTitle: e.target.value})}
-                                            />
+                                        <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
+                                        
+                                        <div className="flex-1 space-y-2">
+                                            <input className="text-xl font-black w-full bg-transparent border-b focus:border-blue-500 outline-none" value={resultData.name || ""} placeholder="姓名" onChange={e => setResultData({...resultData, name: e.target.value})} />
+                                            <input className="text-sm text-blue-500 font-bold w-full bg-transparent border-b focus:border-blue-500 outline-none" value={resultData.jobTitle || ""} placeholder="職稱" onChange={e => setResultData({...resultData, jobTitle: e.target.value})} />
                                         </div>
                                     </div>
 
-                                    <div className="space-y-3 text-sm text-gray-600">
-                                        <div className="flex items-center gap-3 border-b border-gray-50 pb-2">
-                                            <i data-lucide="tag" className="w-4 h-4 text-gray-400 shrink-0"></i>
-                                            <div className="flex-1">
-                                                <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">分類</p>
-                                                <div className="relative">
-                                                    <select
-                                                        className="w-full font-bold text-gray-800 bg-transparent focus:outline-none appearance-none"
-                                                        value={resultData.category || "工作"}
-                                                        onChange={(e) => setResultData({...resultData, category: e.target.value})}
-                                                    >
-                                                        <option value="工作">工作</option>
-                                                        <option value="家人">家人</option>
-                                                        <option value="同學">同學</option>
-                                                        <option value="朋友">朋友</option>
-                                                    </select>
-                                                    <i data-lucide="chevron-down" className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"></i>
-                                                </div>
-                                            </div>
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-3 border-b pb-1">
+                                            <Icon name="tag" className="text-gray-400" />
+                                            <select className="flex-1 bg-transparent font-bold text-sm outline-none" value={resultData.category || "工作"} onChange={e => setResultData({...resultData, category: e.target.value})}>
+                                                {["工作", "家人", "同學", "朋友"].map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
                                         </div>
-
                                         {[
-                                            { icon: "building", label: "公司", key: "company" },
-                                            { icon: "phone", label: "電話", key: "phone" },
-                                            { icon: "mail", label: "Email", key: "email" },
-                                            { icon: "map-pin", label: "地址", key: "address" }
-                                        ].map(field => (
-                                            <div key={field.key} className="flex items-center gap-3 border-b border-gray-50 pb-2">
-                                                <i data-lucide={field.icon} className="w-4 h-4 text-gray-400 shrink-0"></i>
-                                                <div className="flex-1">
-                                                    <p className="text-[10px] text-gray-400 font-bold uppercase">{field.label}</p>
-                                                    <input 
-                                                        className="w-full font-medium text-gray-800 bg-transparent focus:outline-none placeholder-gray-300"
-                                                        value={resultData[field.key] || ""}
-                                                        placeholder={`點擊輸入${field.label}`}
-                                                        onChange={(e) => setResultData({...resultData, [field.key]: e.target.value})}
-                                                    />
-                                                </div>
-                                                <i data-lucide="pencil" className="w-3 h-3 text-gray-300"></i>
+                                            { icon: "building", key: "company", label: "公司" },
+                                            { icon: "phone", key: "phone", label: "電話" },
+                                            { icon: "mail", key: "email", label: "Email" },
+                                            { icon: "map-pin", key: "address", label: "地址" }
+                                        ].map(f => (
+                                            <div key={f.key} className="flex items-center gap-3 border-b pb-1">
+                                                <Icon name={f.icon} className="text-gray-400" />
+                                                <input className="flex-1 bg-transparent text-sm font-medium outline-none" value={resultData[f.key] || ""} placeholder={f.label} onChange={e => setResultData({...resultData, [f.key]: e.target.value})} />
+                                                <Icon name="pencil" size={14} className="text-gray-300" />
                                             </div>
                                         ))}
                                     </div>
                                 </div>
 
                                 {capturedImage && (
-                                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                                        <p className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
-                                            <i data-lucide="image" className="w-3 h-3"></i> 名片快照
-                                        </p>
-                                        <img src={capturedImage} className="w-full rounded-lg border border-gray-100" />
+                                    <div className="bg-white p-4 rounded-xl shadow-sm">
+                                        <p className="text-xs font-bold text-gray-400 mb-2">名片快照</p>
+                                        <img src={capturedImage} className="w-full rounded-lg" />
                                     </div>
                                 )}
-                                
-                                <div className="fixed bottom-0 left-0 w-full p-4 bg-white border-t flex gap-2 z-30 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
-                                    {currentCardId ? (
-                                        <>
-                                            <button onClick={cleanupAndHome} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">返回</button>
-                                            <button onClick={deleteCurrentCard} className="flex-1 bg-red-50 text-red-500 p-3 rounded-xl font-bold flex justify-center items-center gap-2 border border-red-100">
-                                                <i data-lucide="trash-2" className="w-4 h-4"></i> 刪除
-                                            </button>
-                                            <button onClick={saveCard} className="flex-[2] bg-blue-600 text-white p-3 rounded-xl font-bold flex justify-center items-center gap-2 shadow-lg shadow-blue-200">
-                                                <i data-lucide="save" className="w-4 h-4"></i> 更新
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <button onClick={cleanupAndHome} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">放棄</button>
-                                            <button onClick={saveCard} className="flex-[2] bg-blue-600 text-white p-3 rounded-xl font-bold flex justify-center items-center gap-2 shadow-lg shadow-blue-200">
-                                                <i data-lucide="save" className="w-4 h-4"></i> 儲存
-                                            </button>
-                                        </>
-                                    )}
+
+                                <div className="flex gap-2">
+                                    <button onClick={() => setView("home")} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">取消</button>
+                                    <button onClick={saveCard} className="flex-[2] bg-blue-600 text-white p-3 rounded-xl font-bold flex justify-center items-center gap-2">
+                                        <Icon name="save" /> 儲存
+                                    </button>
                                 </div>
                             </div>
                         )}
@@ -560,26 +368,18 @@
 
                     {view === "home" && (
                         <div className="fixed bottom-6 left-0 w-full flex justify-center pointer-events-none">
-                            <button 
-                                onClick={() => customApiKey ? setView("scan") : setView("settings")}
-                                className="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform pointer-events-auto border-4 border-white hover:bg-blue-700"
-                            >
-                                <i data-lucide="camera" className="w-8 h-8"></i>
+                            <button onClick={() => apiKey ? setView("scan") : setView("settings")} className="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform pointer-events-auto border-4 border-white hover:bg-blue-700">
+                                <Icon name="camera" size={32} />
                             </button>
                         </div>
                     )}
 
-                    {view === "scan" && (
-                        <CameraScanner 
-                            onCapture={img => { setCapturedImage(img); setView("home"); analyze(img); }} 
-                            onCancel={() => setView("home")} 
-                        />
-                    )}
+                    {view === "scan" && <CameraScanner onCapture={analyze} onCancel={() => setView("home")} />}
 
                     {isProcessing && (
                         <div className="fixed inset-0 bg-black/80 z-[60] flex flex-col items-center justify-center text-white">
                             <div className="animate-spin w-10 h-10 border-4 border-white border-t-transparent rounded-full mb-4"></div>
-                            <p>AI 正在辨識中...</p>
+                            <p>AI 辨識中...</p>
                         </div>
                     )}
                 </div>
@@ -587,8 +387,7 @@
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-        setTimeout(() => lucide.createIcons(), 500);
+        root.render(<ErrorBoundary><App /></ErrorBoundary>);
     </script>
 </body>
 </html>
