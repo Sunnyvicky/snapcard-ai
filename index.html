@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SnapCard AI - 極速輕量版</title>
+    <title>SnapCard AI - 安全模式</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -20,42 +20,44 @@
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
-        // --- 核心修正：使用 Object URL 避免記憶體溢出 ---
+        // --- 極致安全壓縮 (Max 500px) ---
         const compressImage = (file) => {
             return new Promise((resolve, reject) => {
-                // 關鍵差異：不讀取檔案內容，只建立指標
+                if (!file) return reject("無檔案");
                 const url = URL.createObjectURL(file);
                 const img = new Image();
                 img.src = url;
                 
                 img.onload = () => {
-                    // 釋放指標
                     URL.revokeObjectURL(url);
-                    
-                    const canvas = document.createElement('canvas');
-                    const MAX_SIZE = 600; // 強制縮小到 600px
-                    let width = img.width;
-                    let height = img.height;
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const MAX_SIZE = 500; // 降至 500px 以確保絕對安全
+                        let width = img.width;
+                        let height = img.height;
 
-                    if (width > height) {
-                        if (width > MAX_SIZE) {
-                            height *= MAX_SIZE / width;
-                            width = MAX_SIZE;
+                        if (width > height) {
+                            if (width > MAX_SIZE) {
+                                height *= MAX_SIZE / width;
+                                width = MAX_SIZE;
+                            }
+                        } else {
+                            if (height > MAX_SIZE) {
+                                width *= MAX_SIZE / height;
+                                height = MAX_SIZE;
+                            }
                         }
-                    } else {
-                        if (height > MAX_SIZE) {
-                            width *= MAX_SIZE / height;
-                            height = MAX_SIZE;
-                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // 低品質輸出以節省 RAM
+                        resolve(canvas.toDataURL('image/jpeg', 0.5)); 
+                    } catch (e) {
+                        reject(e);
                     }
-
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-                    
-                    // 極致壓縮品質 0.5，確保 Base64 字串夠短，不會爆記憶體
-                    resolve(canvas.toDataURL('image/jpeg', 0.5)); 
                 };
                 img.onerror = (e) => {
                     URL.revokeObjectURL(url);
@@ -64,7 +66,7 @@
             });
         };
 
-        // --- 相機元件：降低預覽解析度以求穩定 ---
+        // --- 相機元件 ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [debugMsg, setDebugMsg] = useState("啟動中...");
@@ -74,13 +76,13 @@
 
                 const init = async () => {
                     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                        setDebugMsg("錯誤：不支援相機");
+                        setDebugMsg("錯誤：不支援相機 API");
                         return;
                     }
 
                     try {
-                        setDebugMsg("請求權限...");
-                        // 關鍵修正：降低請求的解析度到 640 (VGA)，大幅減少 RAM 佔用
+                        setDebugMsg("請求相機...");
+                        // 請求最低解析度 VGA
                         const stream = await navigator.mediaDevices.getUserMedia({ 
                             video: { 
                                 facingMode: { ideal: "environment" },
@@ -94,7 +96,10 @@
                         
                         if (videoRef.current) {
                             videoRef.current.srcObject = stream;
-                            // 暴力播放：確保 iOS Safari 真的有在跑
+                            // iOS Safari 關鍵屬性
+                            videoRef.current.setAttribute('playsinline', 'true');
+                            videoRef.current.setAttribute('webkit-playsinline', 'true');
+                            
                             videoRef.current.play().then(() => {
                                 setDebugMsg("");
                             }).catch(e => {
@@ -119,20 +124,36 @@
                         const video = videoRef.current;
                         const canvas = document.createElement("canvas");
                         
-                        // 直接使用影片當前尺寸 (已經是低解析度了，很安全)
-                        canvas.width = video.videoWidth || 640;
-                        canvas.height = video.videoHeight || 480;
+                        // 強制縮小
+                        const MAX_SIZE = 500;
+                        let width = video.videoWidth || 640;
+                        let height = video.videoHeight || 480;
+
+                        if (width > height) {
+                            if (width > MAX_SIZE) {
+                                height *= MAX_SIZE / width;
+                                width = MAX_SIZE;
+                            }
+                        } else {
+                            if (height > MAX_SIZE) {
+                                width *= MAX_SIZE / height;
+                                height = MAX_SIZE;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
                         
                         const ctx = canvas.getContext("2d");
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(video, 0, 0, width, height);
                         
-                        const base64 = canvas.toDataURL("image/jpeg", 0.6);
+                        const base64 = canvas.toDataURL("image/jpeg", 0.5);
                         onCapture(base64);
                     } catch (e) {
-                        setDebugMsg("截圖失敗: " + e.message);
+                        alert("截圖失敗(記憶體不足): " + e.message);
                     }
                 } else {
-                    setDebugMsg("相機尚未準備好...");
+                    setDebugMsg("相機未就緒...");
                 }
             };
 
@@ -149,6 +170,7 @@
                             ref={videoRef} 
                             autoPlay 
                             playsInline 
+                            webkit-playsinline="true"
                             muted 
                             className="absolute inset-0 w-full h-full object-cover"
                         />
@@ -174,7 +196,6 @@
         // --- 主程式 ---
         function App() {
             const [view, setView] = useState("home"); 
-            // 增加 try-catch 防止 JSON 解析錯誤導致白屏
             const [cards, setCards] = useState(() => {
                 try {
                     return JSON.parse(localStorage.getItem("snapcard_local_cards") || "[]");
