@@ -27,7 +27,8 @@
         /* 掃描線動畫 */
         @keyframes scan {
             0% { top: 0%; opacity: 0; }
-            50% { opacity: 1; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
             100% { top: 100%; opacity: 0; }
         }
         .scan-line {
@@ -95,7 +96,7 @@
             return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center' }}></span>;
         };
 
-        // --- 極致安全壓縮 ---
+        // --- 極致安全壓縮 (Object URL) ---
         const compressImage = (file) => {
             return new Promise((resolve, reject) => {
                 if (!file) return reject("無檔案");
@@ -130,7 +131,7 @@
             });
         };
 
-        // --- 相機元件 (恢復 WYSIWYG 裁切) ---
+        // --- 相機元件 (所見即所得裁切版) ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [error, setError] = useState(null);
@@ -162,7 +163,8 @@
                 const video = videoRef.current;
                 const canvas = document.createElement("canvas");
                 
-                // 1. 計算裁切區域 (所見即所得)
+                // 1. 計算裁切區域 (所見即所得核心邏輯)
+                // 目標：截取的畫面必須跟螢幕上(CSS object-fit: cover)看到的一模一樣
                 const videoRatio = video.videoWidth / video.videoHeight;
                 const displayRatio = video.clientWidth / video.clientHeight;
                 
@@ -178,8 +180,8 @@
                     sy = (video.videoHeight - sHeight) / 2;
                 }
 
-                // 2. 設定輸出尺寸 (維持記憶體安全限制)
-                const MAX_DIM = 800; // 安全尺寸
+                // 2. 設定輸出尺寸 (維持記憶體安全限制 800px)
+                const MAX_DIM = 800;
                 let destWidth = sWidth;
                 let destHeight = sHeight;
                 
@@ -281,10 +283,10 @@
                 setIsProcessing(true);
                 setError(null);
                 
-                // 極速直連：只使用 gemini-2.0-flash-exp (通常配額好)，備援 1.5-flash
+                // 簡化模型列表：只留 2.0 (快) 和 2.5 (穩)
                 const models = [
-                    "gemini-2.0-flash-exp", 
-                    "gemini-1.5-flash"
+                    "gemini-2.0-flash-exp",
+                    "gemini-2.5-flash-preview-09-2025"
                 ];
 
                 let imageParts = [];
@@ -298,14 +300,15 @@
                     }];
                 }
 
+                // 保持您的「資訊整合」指令
                 const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。若有兩張圖代表正反面，請整合資訊。company欄位請包含中文及英文名稱(若有)。category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdown。`;
 
                 const tryModel = async (index) => {
                     if (index >= models.length) {
-                        throw new Error("系統繁忙 (429/404)，請稍後再試。");
+                        throw new Error("系統忙線中 (429)，請休息 1 分鐘後再試。");
                     }
                     const model = models[index];
-                    setStatusMsg(index === 0 ? "AI 辨識中..." : "嘗試備用線路...");
+                    setStatusMsg(index === 0 ? "AI 辨識中..." : "切換備用線路...");
                     
                     try {
                         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
@@ -322,13 +325,19 @@
                         });
 
                         if (!res.ok) {
-                            // 快速切換，不等待
-                            console.warn(`Model ${model} failed (${res.status}), trying next...`);
-                            return await tryModel(index + 1);
+                            if ([404, 429, 500, 503].includes(res.status)) {
+                                console.warn(`Model ${model} failed (${res.status}), trying next...`);
+                                // 遇到錯誤只等 1 秒就切換
+                                await new Promise(r => setTimeout(r, 1000));
+                                return await tryModel(index + 1);
+                            }
+                            const errJson = await res.json().catch(() => ({}));
+                            throw new Error(errJson.error?.message || `API Error (${res.status})`);
                         }
 
                         return await res.json();
                     } catch (e) {
+                        console.warn(`Model ${model} error, switching...`, e);
                         return await tryModel(index + 1);
                     }
                 };
@@ -584,26 +593,27 @@
                                     </div>
                                 </div>
 
-                                {/* 名片快照 (正反面整合) */}
-                                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                                    <p className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
-                                        <Icon name="image" size={14} /> 名片快照
-                                    </p>
-                                    <div className="space-y-2">
-                                        {capturedImage && (
-                                            <div className="relative">
-                                                <img src={capturedImage} className="w-full rounded-lg border border-gray-100" />
-                                                <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">正面</span>
-                                            </div>
-                                        )}
-                                        {backImage && (
-                                            <div className="relative">
-                                                <img src={backImage} className="w-full rounded-lg border border-gray-100" />
-                                                <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">背面</span>
-                                            </div>
-                                        )}
+                                {capturedImage && (
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                        <p className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
+                                            <Icon name="image" size={14} /> 名片快照
+                                        </p>
+                                        <div className="space-y-2">
+                                            {capturedImage && (
+                                                <div className="relative">
+                                                    <img src={capturedImage} className="w-full rounded-lg border border-gray-100" />
+                                                    <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">正面</span>
+                                                </div>
+                                            )}
+                                            {backImage && (
+                                                <div className="relative">
+                                                    <img src={backImage} className="w-full rounded-lg border border-gray-100" />
+                                                    <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">背面</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
 
                                 <div className="bg-white p-4 rounded-xl shadow-sm">
                                     <div className="flex justify-between items-center mb-2">
