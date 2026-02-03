@@ -105,7 +105,7 @@
                 img.onload = () => {
                     URL.revokeObjectURL(url);
                     const canvas = document.createElement('canvas');
-                    const MAX_SIZE = 800; 
+                    const MAX_SIZE = 800; // 提升至 800px 增加清晰度
                     let width = img.width;
                     let height = img.height;
 
@@ -130,7 +130,7 @@
             });
         };
 
-        // --- 相機元件 (恢復 WYSIWYG 裁切) ---
+        // --- 相機元件 (WYSIWYG 裁切版) ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [error, setError] = useState(null);
@@ -162,23 +162,21 @@
                 const video = videoRef.current;
                 const canvas = document.createElement("canvas");
                 
-                // 1. 計算裁切區域 (所見即所得)
+                // 裁切邏輯
                 const videoRatio = video.videoWidth / video.videoHeight;
                 const displayRatio = video.clientWidth / video.clientHeight;
                 
                 let sx = 0, sy = 0, sWidth = video.videoWidth, sHeight = video.videoHeight;
 
                 if (videoRatio > displayRatio) {
-                    // 影像比螢幕寬 => 裁掉左右
                     sWidth = video.videoHeight * displayRatio;
                     sx = (video.videoWidth - sWidth) / 2;
                 } else {
-                    // 影像比螢幕高 => 裁掉上下
                     sHeight = video.videoWidth / displayRatio;
                     sy = (video.videoHeight - sHeight) / 2;
                 }
 
-                // 2. 設定輸出尺寸
+                // 輸出尺寸控制
                 const MAX_DIM = 1000;
                 let destWidth = sWidth;
                 let destHeight = sHeight;
@@ -231,11 +229,11 @@
             const [cards, setCards] = useState(() => {
                 try { return JSON.parse(localStorage.getItem("snapcard_cards") || "[]"); } catch { return []; }
             });
-            const [capturedImage, setCapturedImage] = useState(null); // 正面 (相機拍的)
-            const [backImage, setBackImage] = useState(null); // 背面
-            const [currentAvatar, setCurrentAvatar] = useState(null); // 頭像
-            const [additionalImage, setAdditionalImage] = useState(null); // 附加照片
-            
+            const [tempScans, setTempScans] = useState([]); 
+            const [capturedImage, setCapturedImage] = useState(null); 
+            const [backImage, setBackImage] = useState(null); 
+            const [currentAvatar, setCurrentAvatar] = useState(null);
+            const [additionalImage, setAdditionalImage] = useState(null);
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState({});
             const [currentCardId, setCurrentCardId] = useState(null);
@@ -243,7 +241,7 @@
             const [apiKey, setApiKey] = useState(() => localStorage.getItem("snapcard_api_key") || "");
             const [tempKey, setTempKey] = useState("");
             const [error, setError] = useState(null);
-            
+            const [statusMsg, setStatusMsg] = useState("AI 辨識中...");
             const avatarInputRef = useRef(null);
             const backImageInputRef = useRef(null);
             const additionalImageInputRef = useRef(null);
@@ -259,52 +257,82 @@
                     if (window.lucide) window.lucide.createIcons();
                 }, 50);
                 return () => clearTimeout(timer);
-            }, [view, cards, resultData, additionalImage, backImage, currentAvatar]);
+            }, [view, cards, tempScans, resultData, additionalImage, backImage, currentAvatar]);
 
             const startScanFlow = () => {
                 if (!apiKey) {
                     setView("settings");
                     return;
                 }
+                setTempScans([]);
                 setView("scan");
             };
 
             const handleScanCapture = (base64) => {
-                setCapturedImage(base64);
-                // 拍完直接辨識 (回復舊有流程)
-                analyze(base64);
+                const newScans = [...tempScans, base64];
+                setTempScans(newScans);
+                setView("check_scans");
             };
 
             const analyze = async (base64) => {
                 setIsProcessing(true);
                 setError(null);
                 
-                // 固定使用 gemini-1.5-flash，這是最穩定的免費版模型
-                const model = "gemini-1.5-flash";
-                
-                try {
-                    const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。company欄位請包含中文及英文名稱(若有)。category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdown。`;
+                // 精簡模型列表：只留 2.0 (快) 和 2.5 (穩)，移除 1.5
+                const models = [
+                    "gemini-2.0-flash-exp", 
+                    "gemini-2.5-flash-preview-09-2025"
+                ];
 
-                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            contents: [{ 
-                                parts: [
-                                    { text: promptText },
-                                    { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }
-                                ] 
-                            }]
-                        })
-                    });
+                let imageParts = [];
+                if (tempScans.length > 0) {
+                    imageParts = tempScans.map(img => ({
+                        inlineData: { mimeType: "image/jpeg", data: img.split(',')[1] }
+                    }));
+                } else if (base64) {
+                    imageParts = [{
+                        inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] }
+                    }];
+                }
 
-                    if (!res.ok) {
-                        const errJson = await res.json().catch(() => ({}));
-                        if (res.status === 429) throw new Error("免費額度已滿，請休息 1 分鐘後再試。");
-                        throw new Error(errJson.error?.message || `API Error (${res.status})`);
+                const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。若有兩張圖代表正反面，請整合資訊。company欄位請包含中文及英文名稱(若有)。category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdown。`;
+
+                const tryModel = async (index) => {
+                    if (index >= models.length) {
+                        throw new Error("系統忙線中 (429)，請休息 1 分鐘後再試。");
                     }
+                    const model = models[index];
+                    setStatusMsg(index === 0 ? "AI 辨識中..." : "切換備用線路...");
+                    
+                    try {
+                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                contents: [{ 
+                                    parts: [
+                                        { text: promptText },
+                                        ...imageParts
+                                    ] 
+                                }]
+                            })
+                        });
 
-                    const json = await res.json();
+                        if (!res.ok) {
+                            // 遇到錯誤直接切換，不等待
+                            console.warn(`Model ${model} failed (${res.status}), trying next...`);
+                            return await tryModel(index + 1);
+                        }
+
+                        return await res.json();
+                    } catch (e) {
+                        return await tryModel(index + 1);
+                    }
+                };
+
+                try {
+                    const json = await tryModel(0);
+                    
                     let text = json.candidates[0].content.parts[0].text;
                     text = text.replace(/```json|```/g, '').trim();
                     const start = text.indexOf('{'), end = text.lastIndexOf('}');
@@ -312,15 +340,21 @@
                     
                     setResultData(data || { category: "工作" });
                     
-                    // 重置其他欄位
-                    setBackImage(null);
-                    setAdditionalImage(null);
+                    if (tempScans.length > 0) {
+                        setCapturedImage(tempScans[0]);
+                        setBackImage(tempScans[1] || null);
+                        setAdditionalImage(null);
+                    } else if (base64) {
+                        setCapturedImage(base64);
+                        setBackImage(null);
+                    }
+                    
                     setCurrentAvatar(null);
                     setCurrentCardId(null);
                     setView("result");
                 } catch (e) {
                     setError(e.message);
-                    setView("home");
+                    if (view !== "check_scans") setView("home");
                 } finally {
                     setIsProcessing(false);
                 }
@@ -345,13 +379,20 @@
                 setView("home");
             };
 
-            // 上傳處理函式 (共用壓縮邏輯)
+            const handleAvatarUpload = async (e) => {
+                if (e.target.files[0]) {
+                    try {
+                        const base64 = await compressImage(e.target.files[0]);
+                        setCurrentAvatar(base64);
+                    } catch(err) { alert("圖片處理失敗"); }
+                }
+            };
+
             const handleUpload = async (e, setter) => {
                 if (e.target.files[0]) {
                     try {
                         const base64 = await compressImage(e.target.files[0]);
                         setter(base64);
-                        e.target.value = ''; // Reset input
                     } catch(err) { alert("圖片處理失敗"); }
                 }
             };
@@ -361,7 +402,7 @@
                 setCapturedImage(card.image);
                 setBackImage(card.backImage || null);
                 setCurrentAvatar(card.avatar);
-                setAdditionalImage(card.additionalImage || null); 
+                setAdditionalImage(card.additionalImage || card.secondImage || null); 
                 setCurrentCardId(card.id);
                 setView("result");
             };
@@ -461,6 +502,35 @@
                             </div>
                         )}
 
+                        {view === "check_scans" && (
+                            <div className="h-full flex flex-col p-4 space-y-4">
+                                <div className="flex-1 overflow-y-auto space-y-4">
+                                    <h2 className="text-lg font-bold text-center">已拍攝 {tempScans.length} 張</h2>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        {tempScans.map((img, idx) => (
+                                            <div key={idx} className="relative rounded-xl overflow-hidden border shadow-sm">
+                                                <img src={img} className="w-full" />
+                                                <span className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
+                                                    {idx === 0 ? "正面" : "背面"}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-3">
+                                    {tempScans.length < 2 && (
+                                        <button onClick={() => setView("scan")} className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+                                            <Icon name="camera" size={18} /> 繼續拍攝背面
+                                        </button>
+                                    )}
+                                    <button onClick={() => analyze()} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+                                        <Icon name="sparkles" size={18} /> 開始辨識
+                                    </button>
+                                    <button onClick={() => { setTempScans([]); setView("home"); }} className="text-gray-400 text-sm py-2">取消</button>
+                                </div>
+                            </div>
+                        )}
+
                         {view === "result" && (
                             <div className="space-y-4 pb-20">
                                 <div className="bg-white p-6 rounded-2xl shadow-lg border-t-4 border-blue-500">
@@ -471,7 +541,7 @@
                                             </div>
                                             {currentAvatar && <button onClick={(e) => { e.stopPropagation(); setCurrentAvatar(null); }} className="absolute -bottom-1 -right-1 bg-red-500 text-white p-1 rounded-full shadow-md hover:bg-red-600"><Icon name="x" size={12} /></button>}
                                         </div>
-                                        <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={(e) => handleUpload(e, setCurrentAvatar)} />
+                                        <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
                                         
                                         <div className="flex-1 space-y-2">
                                             <input className="text-xl font-black w-full bg-transparent border-b focus:border-blue-500 outline-none" value={resultData.name || ""} placeholder="姓名" onChange={e => setResultData({...resultData, name: e.target.value})} />
@@ -582,7 +652,7 @@
                                 </div>
 
                                 <div className="flex gap-2">
-                                    <button onClick={() => setView("home")} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">取消</button>
+                                    <button onClick={() => { setView("home"); setTempScans([]); }} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">取消</button>
                                     <button onClick={saveCard} className="flex-[2] bg-blue-600 text-white p-3 rounded-xl font-bold flex justify-center items-center gap-2">
                                         <Icon name="save" /> 儲存
                                     </button>
@@ -599,12 +669,15 @@
                         </div>
                     )}
 
-                    {view === "scan" && <CameraScanner onCapture={handleScanCapture} onCancel={() => setView("home")} />}
+                    {view === "scan" && <CameraScanner onCapture={handleScanCapture} onCancel={() => { 
+                        if(tempScans.length > 0) setView("check_scans");
+                        else setView("home"); 
+                    }} />}
 
                     {isProcessing && (
                         <div className="fixed inset-0 bg-black/80 z-[60] flex flex-col items-center justify-center text-white">
                             <div className="animate-spin w-10 h-10 border-4 border-white border-t-transparent rounded-full mb-4"></div>
-                            <p>AI 辨識中...</p>
+                            <p>{statusMsg}</p>
                         </div>
                     )}
                 </div>
