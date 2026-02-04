@@ -283,7 +283,6 @@
                     inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] }
                 }];
 
-                // 更新 Prompt: 要求區分電話類型，包含 mobile, tel, fax
                 const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作","note":""}。
                 重點規則：
                 1. 請將電話區分為 mobile(手機), tel(市話), fax(傳真)。
@@ -338,7 +337,6 @@
                     
                     setResultData(data || { category: "工作" });
                     
-                    // 重置其他圖片欄位
                     setBackImage(null);
                     setAdditionalImage(null);
                     setCurrentAvatar(null);
@@ -482,8 +480,9 @@
                                                 {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                {/* 修改顯示順序與樣式：人名(大黑粗) -> 公司(小灰) */}
+                                                {/* 修改：姓名 (text-lg 粗體 黑) */}
                                                 <div className="font-bold text-gray-900 text-lg truncate">{c.name || "未填寫姓名"}</div>
+                                                {/* 修改：公司 (text-sm 灰色) */}
                                                 <div className="text-xs text-gray-500 truncate">{c.company || "未填寫公司"}</div>
                                             </div>
                                             <button onClick={(e) => { e.stopPropagation(); if(confirm("刪除?")) setCards(cards.filter(x => x.id !== c.id)); }} className="text-gray-300 hover:text-red-500">
