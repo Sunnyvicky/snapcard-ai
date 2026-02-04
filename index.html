@@ -130,7 +130,7 @@
             });
         };
 
-        // --- 相機元件 ---
+        // --- 相機元件 (WYSIWYG 裁切版) ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [error, setError] = useState(null);
@@ -253,14 +253,13 @@
                     if (window.lucide) window.lucide.createIcons();
                 }, 50);
                 return () => clearTimeout(timer);
-            }, [view, cards, tempScans, resultData, additionalImage, backImage, currentAvatar]);
+            }, [view, cards, resultData, additionalImage, backImage, currentAvatar]);
 
             const startScanFlow = () => {
                 if (!apiKey) {
                     setView("settings");
                     return;
                 }
-                setTempScans([]);
                 setView("scan");
             };
 
@@ -283,7 +282,7 @@
                     inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] }
                 }];
 
-                // 更新 Prompt: 要求區分電話類型
+                // 更新 Prompt: 要求區分電話類型，包含 mobile, tel, fax
                 const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作","note":""}。
                 重點規則：
                 1. 請將電話區分為 mobile(手機), tel(市話), fax(傳真)。
@@ -390,7 +389,6 @@
             };
 
             const viewSavedCard = (card) => {
-                // 兼容舊資料：自動將 phone 遷移至 mobile 或 tel
                 const data = {...card};
                 if (data.phone && !data.mobile && !data.tel) {
                     if (data.phone.startsWith("09")) data.mobile = data.phone;
@@ -422,9 +420,6 @@
                 });
             }, [cards, filterCategory, searchQuery]);
 
-            // 暫存變數
-            const [tempScans, setTempScans] = useState([]); 
-
             return (
                 <div className="max-w-md mx-auto h-screen bg-gray-50 flex flex-col font-sans overflow-hidden border-x border-gray-200">
                     <header className="px-6 pt-12 pb-4 bg-white shadow-sm flex justify-between items-center z-10">
@@ -445,7 +440,6 @@
                                     </div>
                                 )}
                                 
-                                {/* 搜尋列 */}
                                 <div className="relative">
                                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                                         <Icon name="search" size={16} />
@@ -483,7 +477,8 @@
                                                 {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="font-bold truncate text-gray-900 text-lg">{c.name || "未填寫姓名"}</div>
+                                                {/* 修改顯示順序與樣式：人名(大黑粗) -> 公司(小灰) */}
+                                                <div className="font-bold text-gray-900 text-lg truncate">{c.name || "未填寫姓名"}</div>
                                                 <div className="text-xs text-gray-500 truncate">{c.company || "未填寫公司"}</div>
                                             </div>
                                             <button onClick={(e) => { e.stopPropagation(); if(confirm("刪除?")) setCards(cards.filter(x => x.id !== c.id)); }} className="text-gray-300 hover:text-red-500">
@@ -559,7 +554,7 @@
                                             </select>
                                         </div>
                                         
-                                        {/* 新增撥號與寄信按鈕 */}
+                                        {/* 新增撥號與寄信按鈕，恢復詳細列表 */}
                                         {[
                                             { icon: "building", key: "company", label: "公司" },
                                             { icon: "smartphone", key: "mobile", label: "手機", type: "tel", color: "text-green-500 bg-green-50" },
@@ -576,7 +571,6 @@
                                                     placeholder={f.label} 
                                                     onChange={e => setResultData({...resultData, [f.key]: e.target.value})} 
                                                 />
-                                                {/* 判斷是否顯示動作按鈕 */}
                                                 {f.type && resultData[f.key] ? (
                                                     <a 
                                                         href={f.type === 'map' ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(resultData[f.key])}` : `${f.type}:${resultData[f.key]}`}
