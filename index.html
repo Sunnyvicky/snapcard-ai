@@ -95,7 +95,7 @@
             return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center' }}></span>;
         };
 
-        // --- 極致安全壓縮 ---
+        // --- 極致安全壓縮 (Object URL) ---
         const compressImage = (file) => {
             return new Promise((resolve, reject) => {
                 if (!file) return reject("無檔案");
@@ -162,7 +162,6 @@
                 const video = videoRef.current;
                 const canvas = document.createElement("canvas");
                 
-                // 1. 計算裁切區域 (所見即所得)
                 const videoRatio = video.videoWidth / video.videoHeight;
                 const displayRatio = video.clientWidth / video.clientHeight;
                 
@@ -176,7 +175,6 @@
                     sy = (video.videoHeight - sHeight) / 2;
                 }
 
-                // 2. 設定輸出尺寸
                 const MAX_DIM = 1000;
                 let destWidth = sWidth;
                 let destHeight = sHeight;
@@ -230,6 +228,7 @@
                 try { return JSON.parse(localStorage.getItem("snapcard_cards") || "[]"); } catch { return []; }
             });
             const [capturedImage, setCapturedImage] = useState(null); 
+            const [backImage, setBackImage] = useState(null); 
             const [currentAvatar, setCurrentAvatar] = useState(null);
             const [additionalImage, setAdditionalImage] = useState(null);
             const [isProcessing, setIsProcessing] = useState(false);
@@ -254,7 +253,7 @@
                     if (window.lucide) window.lucide.createIcons();
                 }, 50);
                 return () => clearTimeout(timer);
-            }, [view, cards, resultData, additionalImage, currentAvatar]);
+            }, [view, cards, tempScans, resultData, additionalImage, backImage, currentAvatar]);
 
             const startScanFlow = () => {
                 if (!apiKey) {
@@ -273,27 +272,18 @@
                 setIsProcessing(true);
                 setError(null);
                 
-                // 精簡模型列表：優先 2.0 (快) , 備援 2.5 (穩)
-                const models = [
-                    "gemini-2.0-flash-exp",
-                    "gemini-2.5-flash-preview-09-2025"
-                ];
-
+                const model = "gemini-1.5-flash";
+                
+                // 更新提示詞：將電話分為 mobile, tel, fax
                 const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作","note":""}。
-                重點規則：
-                1. 請將電話區分為 mobile(手機), tel(市話), fax(傳真)。
-                2. company欄位請合併中文及英文名稱。
-                3. category從[工作,家人,同學,朋友]選。
-                4. note欄位保留空白。
+                規則：
+                1. 姓名若有中英文請合併。
+                2. 公司名稱若有中英文請合併。
+                3. 電話區分為 mobile(手機), tel(市話), fax(傳真)。
+                4. category從[工作,家人,同學,朋友]選。note留白。
                 無Markdown。`;
 
-                const tryModel = async (index) => {
-                    if (index >= models.length) {
-                        throw new Error("系統忙線中 (429)，請休息 1 分鐘後再試。");
-                    }
-                    const model = models[index];
-                    setStatusMsg(index === 0 ? "AI 辨識中..." : "切換備用線路...");
-                    
+                const tryModel = async () => {
                     try {
                         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
                             method: "POST",
@@ -309,22 +299,19 @@
                         });
 
                         if (!res.ok) {
-                            if ([404, 429, 500, 503].includes(res.status)) {
-                                console.warn(`Model ${model} failed (${res.status}), trying next...`);
-                                return await tryModel(index + 1);
-                            }
                             const errJson = await res.json().catch(() => ({}));
+                            if (res.status === 429) throw new Error("免費額度已滿，請休息 1 分鐘後再試。");
                             throw new Error(errJson.error?.message || `API Error (${res.status})`);
                         }
 
                         return await res.json();
                     } catch (e) {
-                        return await tryModel(index + 1);
+                        throw e;
                     }
                 };
 
                 try {
-                    const json = await tryModel(0);
+                    const json = await tryModel();
                     
                     let text = json.candidates[0].content.parts[0].text;
                     text = text.replace(/```json|```/g, '').trim();
@@ -333,7 +320,7 @@
                     
                     setResultData(data || { category: "工作" });
                     
-                    // 重置其他圖片欄位
+                    setBackImage(null);
                     setAdditionalImage(null);
                     setCurrentAvatar(null);
                     setCurrentCardId(null);
@@ -351,6 +338,7 @@
                     id: currentCardId || Date.now(), 
                     ...resultData, 
                     image: capturedImage, 
+                    backImage: backImage, 
                     avatar: currentAvatar,
                     additionalImage: additionalImage, 
                     category: resultData.category || "工作" 
@@ -383,8 +371,16 @@
             };
 
             const viewSavedCard = (card) => {
-                setResultData({...card});
+                // 為了兼容舊資料，如果舊資料只有 phone 欄位，把它放到 mobile 或 tel
+                const data = {...card};
+                if (data.phone && !data.mobile && !data.tel) {
+                    if (data.phone.startsWith("09")) data.mobile = data.phone;
+                    else data.tel = data.phone;
+                }
+
+                setResultData(data);
                 setCapturedImage(card.image);
+                setBackImage(card.backImage || null);
                 setCurrentAvatar(card.avatar);
                 setAdditionalImage(card.additionalImage || null); 
                 setCurrentCardId(card.id);
@@ -406,6 +402,9 @@
                     return companyA.localeCompare(companyB, "zh-Hant");
                 });
             }, [cards, filterCategory, searchQuery]);
+
+            // 臨時暫存，沒用到但為了不改太多結構先留著
+            const [tempScans, setTempScans] = useState([]); 
 
             return (
                 <div className="max-w-md mx-auto h-screen bg-gray-50 flex flex-col font-sans overflow-hidden border-x border-gray-200">
@@ -505,6 +504,7 @@
                                     </div>
 
                                     <div className="space-y-3">
+                                        {/* 1. 類別 */}
                                         <div className="flex items-center gap-3 border-b pb-1">
                                             <Icon name="tag" className="text-gray-400" />
                                             <select className="flex-1 bg-transparent font-bold text-sm outline-none" value={resultData.category || "工作"} onChange={e => setResultData({...resultData, category: e.target.value})}>
@@ -512,26 +512,13 @@
                                             </select>
                                         </div>
                                         
-                                        {/* 修改：分開顯示三種電話 */}
-                                        <div className="flex items-center gap-3 border-b pb-1">
-                                            <Icon name="smartphone" className="text-gray-400" />
-                                            <input className="flex-1 bg-transparent text-sm font-medium outline-none" value={resultData.mobile || ""} placeholder="手機" onChange={e => setResultData({...resultData, mobile: e.target.value})} />
-                                            <Icon name="pencil" size={14} className="text-gray-300" />
-                                        </div>
-                                        <div className="flex items-center gap-3 border-b pb-1">
-                                            <Icon name="phone" className="text-gray-400" />
-                                            <input className="flex-1 bg-transparent text-sm font-medium outline-none" value={resultData.tel || ""} placeholder="市話" onChange={e => setResultData({...resultData, tel: e.target.value})} />
-                                            <Icon name="pencil" size={14} className="text-gray-300" />
-                                        </div>
-                                        <div className="flex items-center gap-3 border-b pb-1">
-                                            <Icon name="printer" className="text-gray-400" />
-                                            <input className="flex-1 bg-transparent text-sm font-medium outline-none" value={resultData.fax || ""} placeholder="傳真" onChange={e => setResultData({...resultData, fax: e.target.value})} />
-                                            <Icon name="pencil" size={14} className="text-gray-300" />
-                                        </div>
-
+                                        {/* 依照要求排序：公司 -> 手機 -> Email -> 市話 -> 傳真 -> 地址 */}
                                         {[
                                             { icon: "building", key: "company", label: "公司" },
-                                            { icon: "mail", key: "email", label: "Email" },
+                                            { icon: "smartphone", key: "mobile", label: "手機" },
+                                            { icon: "mail", key: "email", label: "EMAIL" },
+                                            { icon: "phone", key: "tel", label: "市話" },
+                                            { icon: "printer", key: "fax", label: "傳真" },
                                             { icon: "map-pin", key: "address", label: "地址" }
                                         ].map(f => (
                                             <div key={f.key} className="flex items-center gap-3 border-b pb-1">
@@ -540,7 +527,7 @@
                                                 <Icon name="pencil" size={14} className="text-gray-300" />
                                             </div>
                                         ))}
-                                        
+
                                         <div className="flex items-start gap-3 border-b pb-1">
                                             <div className="mt-1"><Icon name="file-text" className="text-gray-400" /></div>
                                             <textarea 
@@ -554,15 +541,48 @@
                                     </div>
                                 </div>
 
-                                {capturedImage && (
-                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                                        <p className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
-                                            <Icon name="image" size={14} /> 名片快照
-                                        </p>
-                                        <img src={capturedImage} className="w-full rounded-lg border border-gray-100" />
+                                {/* 名片快照 (正反面整合) */}
+                                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                    <p className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
+                                        <Icon name="image" size={14} /> 名片快照
+                                    </p>
+                                    <div className="space-y-4">
+                                        {capturedImage && (
+                                            <div className="relative">
+                                                <img src={capturedImage} className="w-full rounded-lg border border-gray-100" />
+                                                <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">正面</span>
+                                            </div>
+                                        )}
+                                        
+                                        {/* 背面照片上傳區 */}
+                                        <div className="relative">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-[10px] text-gray-400">背面照片</span>
+                                                <div className="flex gap-2">
+                                                    {backImage && (
+                                                        <button onClick={() => setBackImage(null)} className="text-red-400 text-[10px] font-bold">刪除</button>
+                                                    )}
+                                                    <button onClick={() => backImageInputRef.current?.click()} className="text-blue-500 text-[10px] font-bold">
+                                                        {backImage ? "更換" : "新增"}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <input type="file" ref={backImageInputRef} className="hidden" accept="image/*" onChange={(e) => handleUpload(e, setBackImage)} />
+                                            
+                                            {backImage ? (
+                                                <div className="relative">
+                                                    <img src={backImage} className="w-full rounded-lg border border-gray-100" />
+                                                </div>
+                                            ) : (
+                                                <div onClick={() => backImageInputRef.current?.click()} className="w-full h-20 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 cursor-pointer">
+                                                    <Icon name="plus" size={16} />
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                )}
+                                </div>
 
+                                {/* 附加照片 */}
                                 <div className="bg-white p-4 rounded-xl shadow-sm">
                                     <div className="flex justify-between items-center mb-2">
                                         <p className="text-xs font-bold text-gray-400">附加照片</p>
@@ -605,7 +625,7 @@
 
                     {view === "home" && (
                         <div className="fixed bottom-6 left-0 w-full flex justify-center pointer-events-none">
-                            <button onClick={() => apiKey ? setView("scan") : setView("settings")} className="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform pointer-events-auto border-4 border-white hover:bg-blue-700">
+                            <button onClick={startScanFlow} className="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform pointer-events-auto border-4 border-white hover:bg-blue-700">
                                 <Icon name="camera" size={32} />
                             </button>
                         </div>
