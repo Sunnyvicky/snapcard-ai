@@ -331,7 +331,7 @@
             const avatarInputRef = useRef(null);
             const secondImageInputRef = useRef(null); 
             const [searchQuery, setSearchQuery] = useState(""); 
-            const importFileRef = useRef(null); 
+            const importFileRef = useRef(null); // 確保 importFileRef 存在
 
             // 初始化時讀取 IndexedDB
             useEffect(() => {
@@ -585,7 +585,7 @@
                     }
 
                     const dataStr = JSON.stringify(cards, null, 2);
-                    const blob = new Blob([dataStr], { type: "application/json" });
+                    const blob = new Blob([dataStr], { type: "application/octet-stream" }); // 修正為 octet-stream
                     const url = URL.createObjectURL(blob);
                     
                     const now = new Date();
@@ -739,10 +739,10 @@
                                     <h3 className="font-bold mb-2">資料管理</h3>
                                     <div className="flex gap-2 mb-4">
                                         <button onClick={exportData} className="flex-1 bg-green-500 text-white p-2 rounded text-sm font-bold flex items-center justify-center gap-1">
-                                            <Icon name="download" size={14} /> 匯出備份
+                                            <Icon name="upload" size={14} /> 匯出備份
                                         </button>
                                         <button onClick={() => importFileRef.current.click()} className="flex-1 bg-orange-400 text-white p-2 rounded text-sm font-bold flex items-center justify-center gap-1">
-                                            <Icon name="upload" size={14} /> 匯入還原
+                                            <Icon name="download" size={14} /> 匯入還原
                                         </button>
                                         <input type="file" ref={importFileRef} className="hidden" accept=".json" onChange={importData} />
                                     </div>
@@ -806,6 +806,7 @@
                                             </select>
                                         </div>
                                         
+                                        {/* 新增撥號與寄信按鈕，恢復詳細列表 */}
                                         {[
                                             { icon: "building", key: "company", label: "公司" },
                                             { icon: "smartphone", key: "mobile", label: "手機", type: "tel", color: "text-green-500 bg-green-50" },
