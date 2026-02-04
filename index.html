@@ -56,7 +56,7 @@
     </style>
 </head>
 <body>
-    <!-- 1. 預先顯示的啟動畫面，解決白屏等待感 -->
+    <!-- 1. 啟動畫面：React 載入前顯示，載入後自動消失 (無延遲) -->
     <div id="root">
         <div class="splash-screen">
             <div style="width: 64px; height: 64px; background-color: #2563eb; border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.4);">
@@ -343,6 +343,7 @@
                             try {
                                 const localCards = JSON.parse(localCardsStr);
                                 if (localCards.length > 0) {
+                                    console.log("Migrating data from LocalStorage to IndexedDB...");
                                     for (const card of localCards) {
                                         if (!dbCards.find(c => c.id === card.id)) {
                                             await dbUtils.put(card);
@@ -466,7 +467,6 @@
                     
                     setResultData(data || { category: "工作" });
                     
-                    // 重置其他圖片欄位
                     setBackImage(null);
                     setAdditionalImage(null);
                     setCurrentAvatar(null);
@@ -726,6 +726,7 @@
                                 <div className="border-t pt-4">
                                     <h3 className="font-bold mb-2">資料管理</h3>
                                     <div className="flex gap-2 mb-4">
+                                        {/* 修正：交換圖示並優化樣式 */}
                                         <button onClick={exportData} className="flex-1 bg-green-500 text-white p-2 rounded text-sm font-bold flex items-center justify-center gap-1">
                                             <Icon name="upload" size={14} /> 匯出備份
                                         </button>
@@ -794,6 +795,7 @@
                                             </select>
                                         </div>
                                         
+                                        {/* 新增撥號與寄信按鈕，恢復詳細列表 */}
                                         {[
                                             { icon: "building", key: "company", label: "公司" },
                                             { icon: "smartphone", key: "mobile", label: "手機", type: "tel", color: "text-green-500 bg-green-50" },
