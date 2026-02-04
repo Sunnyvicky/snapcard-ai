@@ -244,8 +244,14 @@
             const [searchQuery, setSearchQuery] = useState(""); 
 
             useEffect(() => {
-                try { localStorage.setItem("snapcard_cards", JSON.stringify(cards)); }
-                catch (e) { setError("儲存空間已滿"); }
+                try { 
+                    localStorage.setItem("snapcard_cards", JSON.stringify(cards)); 
+                    // 若成功儲存且目前顯示空間不足錯誤，則清除錯誤
+                    setError(prev => (prev && prev.includes("空間")) ? null : prev);
+                }
+                catch (e) { 
+                    setError("手機儲存空間已滿！新資料僅暫存於記憶體，重整後將遺失。建議刪除舊資料或照片。"); 
+                }
             }, [cards]);
 
             useEffect(() => {
@@ -609,6 +615,7 @@
                                             </select>
                                         </div>
                                         
+                                        {/* 新增撥號與寄信按鈕，恢復詳細列表 */}
                                         {[
                                             { icon: "building", key: "company", label: "公司" },
                                             { icon: "smartphone", key: "mobile", label: "手機", type: "tel", color: "text-green-500 bg-green-50" },
