@@ -49,8 +49,9 @@
             left: 0;
             width: 100%;
             height: 2px;
-            background: #3b82f6;
-            box-shadow: 0 0 10px #3b82f6;
+            /* 修正：改成橘色 */
+            background: #f97316;
+            box-shadow: 0 0 10px #f97316;
             animation: scan 2s linear infinite;
         }
         /* 啟動畫面樣式 */
@@ -73,18 +74,12 @@
     <!-- 1. 預先顯示的啟動畫面，解決白屏等待感 -->
     <div id="root">
         <div class="splash-screen">
-            <div style="width: 64px; height: 64px; background: linear-gradient(135deg, #3b82f6 0%, #0f172a 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.4);">
-                <!-- 更新 Logo: 匹配 App Icon 的金色掃描線風格 -->
-                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 512 512" fill="none">
-                    <rect x="96" y="156" width="320" height="200" rx="24" fill="white"/>
-                    <rect x="136" y="190" width="140" height="32" rx="8" fill="#cbd5e1"/>
-                    <rect x="136" y="250" width="240" height="20" rx="6" fill="#e2e8f0"/>
-                    <rect x="136" y="290" width="180" height="20" rx="6" fill="#e2e8f0"/>
-                    <path d="M64 256h384" stroke="#f59e0b" stroke-width="32" stroke-linecap="round"/>
-                </svg>
+            <div style="width: 64px; height: 64px; background: linear-gradient(135deg, #3b82f6 0%, #0f172a 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.4);">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
             </div>
             <h1 style="font-size: 20px; font-weight: 900; color: #1e293b; font-family: sans-serif; letter-spacing: -0.5px;">SNAPCARD AI</h1>
-            <p style="font-size: 14px; color: #64748b; font-family: sans-serif; margin-top: 8px; letter-spacing: 1px;">人脈，是最好的資源</p>
+            <!-- 修正：文字更新為「人脈，是最好的資產」 -->
+            <p style="font-size: 14px; color: #64748b; font-family: sans-serif; margin-top: 8px; letter-spacing: 1px;">人脈，是最好的資產</p>
         </div>
     </div>
 
@@ -235,7 +230,7 @@
             });
         };
 
-        // --- 相機元件 (WYSIWYG 裁切版) ---
+        // --- 相機元件 ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [error, setError] = useState(null);
@@ -328,6 +323,7 @@
         };
 
         function App() {
+            const [showSplash, setShowSplash] = useState(true);
             const [view, setView] = useState("home");
             const [cards, setCards] = useState([]);
             const [isLoadingDB, setIsLoadingDB] = useState(true);
@@ -349,7 +345,13 @@
             const [searchQuery, setSearchQuery] = useState(""); 
             const importFileRef = useRef(null); 
 
-            // 初始化時讀取 IndexedDB (優化版：只遷移一次)
+            // 啟動畫面控制
+            useEffect(() => {
+                const timer = setTimeout(() => setShowSplash(false), 2000);
+                return () => clearTimeout(timer);
+            }, []);
+
+            // 初始化時讀取 IndexedDB
             useEffect(() => {
                 const loadCards = async () => {
                     try {
@@ -364,7 +366,6 @@
                             try {
                                 const localCards = JSON.parse(localCardsStr);
                                 if (localCards.length > 0) {
-                                    console.log("Migrating data from LocalStorage to IndexedDB...");
                                     for (const card of localCards) {
                                         if (!dbCards.find(c => c.id === card.id)) {
                                             await dbUtils.put(card);
@@ -394,7 +395,7 @@
                     if (window.lucide) window.lucide.createIcons();
                 }, 50);
                 return () => clearTimeout(timer);
-            }, [view, cards.length, resultData, additionalImage, backImage, currentAvatar, filterCategory]);
+            }, [view, cards.length, resultData, additionalImage, backImage, currentAvatar, filterCategory, showSplash]);
 
             const startScanFlow = () => {
                 if (!apiKey) {
@@ -426,8 +427,8 @@
                 setError(null);
                 
                 const models = [
-                    "gemini-2.0-flash-exp", 
-                    "gemini-2.5-flash-preview-09-2025"
+                    "gemini-2.5-flash-preview-09-2025",
+                    "gemini-2.0-flash-exp"
                 ];
 
                 let imageParts = [{
@@ -447,7 +448,8 @@
                         throw new Error("系統忙線中 (429)，請休息 1 分鐘後再試。");
                     }
                     const model = models[index];
-                    setStatusMsg(index === 0 ? "AI 辨識中..." : "切換備用線路...");
+                    // 修正文字: AI 辨識中
+                    setStatusMsg("AI 辨識中...");
                     
                     try {
                         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
@@ -600,7 +602,6 @@
                     return;
                 }
                 const dataStr = JSON.stringify(cards, null, 2);
-                // 關鍵：使用 octet-stream 強制瀏覽器下載，避免直接開啟
                 const blob = new Blob([dataStr], { type: "application/octet-stream" });
                 const url = URL.createObjectURL(blob);
                 
@@ -617,8 +618,7 @@
                 setTimeout(() => {
                     document.body.removeChild(linkElement);
                     window.URL.revokeObjectURL(url);
-                    // 增加提示，讓使用者知道動作已觸發
-                    alert(`已建立備份檔：${exportFileDefaultName}\n請檢查您的下載資料夾。`);
+                    alert(`已觸發下載，請檢查您的下載資料夾。`);
                 }, 100);
             };
 
@@ -642,13 +642,12 @@
                                 alert("匯入成功！");
                             }
                         } else {
-                            alert("檔案格式錯誤：請選擇正確的備份檔");
+                            alert("檔案格式錯誤");
                         }
                     } catch (err) {
                         alert("讀取備份檔失敗");
                     }
                 };
-                // 清空 input
                 e.target.value = '';
             };
 
@@ -665,6 +664,24 @@
                     }
                 }
             };
+
+            if (showSplash) {
+                return (
+                    <div className="fixed inset-0 bg-[#f8fafc] z-[9999] flex flex-col items-center justify-center">
+                        <div style={{ width: '64px', height: '64px', background: 'linear-gradient(135deg, #3b82f6 0%, #0f172a 100%)', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.4)' }}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 512 512" fill="none">
+                                <rect x="96" y="156" width="320" height="200" rx="24" fill="white"/>
+                                <rect x="136" y="190" width="140" height="32" rx="8" fill="#cbd5e1"/>
+                                <rect x="136" y="250" width="240" height="20" rx="6" fill="#e2e8f0"/>
+                                <rect x="136" y="290" width="180" height="20" rx="6" fill="#e2e8f0"/>
+                                <path d="M64 256h384" stroke="#f59e0b" strokeWidth="32" strokeLinecap="round"/>
+                            </svg>
+                        </div>
+                        <h1 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', fontFamily: 'sans-serif', letterSpacing: '-0.5px' }}>SNAPCARD AI</h1>
+                        <p style={{ fontSize: '14px', color: '#64748b', fontFamily: 'sans-serif', marginTop: '8px', letterSpacing: '1px' }}>人脈，是最好的資產</p>
+                    </div>
+                );
+            }
 
             return (
                 <div className="max-w-md mx-auto h-screen bg-gray-50 flex flex-col font-sans overflow-hidden border-x border-gray-200">
@@ -817,7 +834,6 @@
                                             </select>
                                         </div>
                                         
-                                        {/* 新增撥號與寄信按鈕，恢復詳細列表 */}
                                         {[
                                             { icon: "building", key: "company", label: "公司" },
                                             { icon: "smartphone", key: "mobile", label: "手機", type: "tel", color: "text-green-500 bg-green-50" },
@@ -834,7 +850,6 @@
                                                     placeholder={f.label} 
                                                     onChange={e => setResultData({...resultData, [f.key]: e.target.value})} 
                                                 />
-                                                {/* 判斷是否顯示動作按鈕 */}
                                                 {f.type && resultData[f.key] ? (
                                                     <a 
                                                         href={f.type === 'map' ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(resultData[f.key])}` : `${f.type}:${resultData[f.key]}`}
