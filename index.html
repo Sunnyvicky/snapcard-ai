@@ -47,6 +47,67 @@
     <script type="text/babel">
         const { useState, useRef, useEffect, useMemo, Component } = React;
 
+        // --- IndexedDB 資料庫工具 (解決容量限制的關鍵) ---
+        const DB_NAME = 'SnapCardDB';
+        const STORE_NAME = 'cards';
+        const DB_VERSION = 1;
+
+        const dbUtils = {
+            open: () => {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(DB_NAME, DB_VERSION);
+                    request.onupgradeneeded = (event) => {
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains(STORE_NAME)) {
+                            db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                        }
+                    };
+                    request.onsuccess = (event) => resolve(event.target.result);
+                    request.onerror = (event) => reject(event.target.error);
+                });
+            },
+            getAll: async () => {
+                const db = await dbUtils.open();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([STORE_NAME], 'readonly');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.getAll();
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            },
+            put: async (card) => {
+                const db = await dbUtils.open();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([STORE_NAME], 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.put(card);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            },
+            delete: async (id) => {
+                const db = await dbUtils.open();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([STORE_NAME], 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.delete(id);
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+            },
+            clear: async () => {
+                const db = await dbUtils.open();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([STORE_NAME], 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.clear();
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+            }
+        };
+
         // --- 錯誤邊界 ---
         class ErrorBoundary extends Component {
             constructor(props) {
@@ -130,7 +191,7 @@
             });
         };
 
-        // --- 相機元件 (WYSIWYG 裁切版) ---
+        // --- 相機元件 ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [error, setError] = useState(null);
@@ -224,9 +285,9 @@
 
         function App() {
             const [view, setView] = useState("home");
-            const [cards, setCards] = useState(() => {
-                try { return JSON.parse(localStorage.getItem("snapcard_cards") || "[]"); } catch { return []; }
-            });
+            const [cards, setCards] = useState([]);
+            const [isLoadingDB, setIsLoadingDB] = useState(true);
+            
             const [capturedImage, setCapturedImage] = useState(null); 
             const [backImage, setBackImage] = useState(null); 
             const [currentAvatar, setCurrentAvatar] = useState(null);
@@ -243,23 +304,54 @@
             const secondImageInputRef = useRef(null); 
             const [searchQuery, setSearchQuery] = useState(""); 
 
+            // 初始化時讀取 IndexedDB
             useEffect(() => {
-                try { 
-                    localStorage.setItem("snapcard_cards", JSON.stringify(cards)); 
-                    // 若成功儲存且目前顯示空間不足錯誤，則清除錯誤
-                    setError(prev => (prev && prev.includes("空間")) ? null : prev);
-                }
-                catch (e) { 
-                    setError("手機儲存空間已滿！新資料僅暫存於記憶體，重整後將遺失。建議刪除舊資料或照片。"); 
-                }
-            }, [cards]);
+                const loadCards = async () => {
+                    try {
+                        setIsLoadingDB(true);
+                        // 1. 嘗試讀取 IndexedDB
+                        const dbCards = await dbUtils.getAll();
+                        
+                        // 2. 檢查是否有舊的 LocalStorage 資料需要遷移
+                        const localCardsStr = localStorage.getItem("snapcard_cards");
+                        if (localCardsStr) {
+                            try {
+                                const localCards = JSON.parse(localCardsStr);
+                                if (localCards.length > 0) {
+                                    console.log("Migrating data from LocalStorage to IndexedDB...");
+                                    for (const card of localCards) {
+                                        // 避免重複 ID
+                                        if (!dbCards.find(c => c.id === card.id)) {
+                                            await dbUtils.put(card);
+                                            dbCards.push(card);
+                                        }
+                                    }
+                                    // 遷移完成後清除舊的，釋放空間
+                                    localStorage.removeItem("snapcard_cards");
+                                }
+                            } catch (e) {
+                                console.error("Migration error", e);
+                            }
+                        }
+                        
+                        // 排序：最新的在前面
+                        setCards(dbCards.sort((a, b) => b.id - a.id));
+                    } catch (err) {
+                        console.error("DB Load Error", err);
+                        setError("資料庫讀取失敗");
+                    } finally {
+                        setIsLoadingDB(false);
+                    }
+                };
+                loadCards();
+            }, []);
 
             useEffect(() => {
                 const timer = setTimeout(() => {
                     if (window.lucide) window.lucide.createIcons();
                 }, 50);
                 return () => clearTimeout(timer);
-            }, [view, cards, tempScans, resultData, additionalImage, backImage, currentAvatar]);
+            }, [view, cards, resultData, additionalImage, backImage, currentAvatar]);
 
             const startScanFlow = () => {
                 if (!apiKey) {
@@ -291,8 +383,8 @@
                 setError(null);
                 
                 const models = [
-                    "gemini-2.5-flash-preview-09-2025",
-                    "gemini-2.0-flash-exp"
+                    "gemini-2.0-flash-exp", 
+                    "gemini-2.5-flash-preview-09-2025"
                 ];
 
                 let imageParts = [{
@@ -353,6 +445,7 @@
                     
                     setResultData(data || { category: "工作" });
                     
+                    // 重置其他圖片欄位
                     setBackImage(null);
                     setAdditionalImage(null);
                     setCurrentAvatar(null);
@@ -366,7 +459,8 @@
                 }
             };
 
-            const saveCard = () => {
+            // 改寫儲存功能：使用 IndexedDB
+            const saveCard = async () => {
                 const newData = { 
                     id: currentCardId || Date.now(), 
                     ...resultData, 
@@ -377,12 +471,29 @@
                     category: resultData.category || "工作" 
                 };
                 
-                if (currentCardId) {
-                    setCards(cards.map(c => c.id === currentCardId ? newData : c));
-                } else {
-                    setCards([newData, ...cards]);
+                try {
+                    await dbUtils.put(newData);
+                    
+                    if (currentCardId) {
+                        setCards(prev => prev.map(c => c.id === currentCardId ? newData : c));
+                    } else {
+                        setCards(prev => [newData, ...prev]);
+                    }
+                    setView("home");
+                } catch (e) {
+                    alert("儲存失敗: " + e.message);
                 }
-                setView("home");
+            };
+
+            const handleDeleteCard = async (id) => {
+                if(confirm("確定要刪除這張名片嗎？")) {
+                    try {
+                        await dbUtils.delete(id);
+                        setCards(prev => prev.filter(c => c.id !== id));
+                    } catch (e) {
+                        alert("刪除失敗");
+                    }
+                }
             };
 
             const handleAvatarUpload = async (e) => {
@@ -449,16 +560,20 @@
                 linkElement.click();
             };
 
-            // 匯入資料
+            // 匯入資料 (寫入 IndexedDB)
             const importData = (e) => {
                 const fileReader = new FileReader();
                 fileReader.readAsText(e.target.files[0], "UTF-8");
-                fileReader.onload = e => {
+                fileReader.onload = async e => {
                     try {
                         const importedCards = JSON.parse(e.target.result);
                         if (Array.isArray(importedCards)) {
                             if (confirm(`確定匯入 ${importedCards.length} 筆名片資料？`)) {
-                                setCards(importedCards);
+                                for (const card of importedCards) {
+                                    await dbUtils.put(card);
+                                }
+                                const allCards = await dbUtils.getAll();
+                                setCards(allCards.sort((a, b) => b.id - a.id));
                                 alert("匯入成功！");
                             }
                         } else {
@@ -468,6 +583,20 @@
                         alert("讀取備份檔失敗");
                     }
                 };
+            };
+
+            // 清空所有資料
+            const clearAllData = async () => {
+                if(confirm("警告：這將刪除所有資料。確定嗎？")) {
+                    try {
+                        await dbUtils.clear();
+                        setCards([]);
+                        localStorage.removeItem("snapcard_cards"); // 清除舊遺留
+                        alert("資料已清空");
+                    } catch (e) {
+                        alert("清除失敗");
+                    }
+                }
             };
 
             return (
@@ -517,7 +646,9 @@
                                     ))}
                                 </div>
 
-                                {filteredCards.length === 0 ? (
+                                {isLoadingDB ? (
+                                    <div className="text-center py-10 text-gray-400">載入資料中...</div>
+                                ) : filteredCards.length === 0 ? (
                                     <div className="text-center py-20 text-gray-400 text-sm">
                                         {cards.length === 0 ? "暫無名片" : "找不到符合的名片"}
                                     </div>
@@ -533,7 +664,7 @@
                                                 {/* 修改：公司 (text-sm 灰色) */}
                                                 <div className="text-sm text-gray-500 truncate">{c.company || "未填寫公司"}</div>
                                             </div>
-                                            <button onClick={(e) => { e.stopPropagation(); if(confirm("刪除?")) setCards(cards.filter(x => x.id !== c.id)); }} className="text-gray-300 hover:text-red-500">
+                                            <button onClick={(e) => handleDeleteCard(c.id, e)} className="text-gray-300 hover:text-red-500">
                                                 <Icon name="trash-2" />
                                             </button>
                                         </div>
@@ -555,7 +686,7 @@
                                         <button onClick={() => importFileRef.current.click()} className="flex-1 bg-orange-400 text-white p-2 rounded text-sm font-bold">匯入還原</button>
                                         <input type="file" ref={importFileRef} className="hidden" accept=".json" onChange={importData} />
                                     </div>
-                                    <button onClick={() => { if(confirm("清空?")) { setCards([]); localStorage.removeItem("snapcard_cards"); } }} className="w-full text-red-500 p-2 text-xs border border-red-200 rounded">清空所有資料</button>
+                                    <button onClick={clearAllData} className="w-full text-red-500 p-2 text-xs border border-red-200 rounded">清空所有資料</button>
                                 </div>
                             </div>
                         )}
