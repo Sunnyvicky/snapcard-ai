@@ -105,7 +105,7 @@
                 img.onload = () => {
                     URL.revokeObjectURL(url);
                     const canvas = document.createElement('canvas');
-                    const MAX_SIZE = 800; // 提升至 800px 增加清晰度
+                    const MAX_SIZE = 800; 
                     let width = img.width;
                     let height = img.height;
 
@@ -130,7 +130,7 @@
             });
         };
 
-        // --- 相機元件 (WYSIWYG 裁切版) ---
+        // --- 相機元件 ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [error, setError] = useState(null);
@@ -162,7 +162,7 @@
                 const video = videoRef.current;
                 const canvas = document.createElement("canvas");
                 
-                // 裁切邏輯
+                // 1. 計算裁切區域 (所見即所得)
                 const videoRatio = video.videoWidth / video.videoHeight;
                 const displayRatio = video.clientWidth / video.clientHeight;
                 
@@ -176,7 +176,7 @@
                     sy = (video.videoHeight - sHeight) / 2;
                 }
 
-                // 輸出尺寸控制
+                // 2. 設定輸出尺寸
                 const MAX_DIM = 1000;
                 let destWidth = sWidth;
                 let destHeight = sHeight;
@@ -243,8 +243,7 @@
             const [error, setError] = useState(null);
             const [statusMsg, setStatusMsg] = useState("AI 辨識中...");
             const avatarInputRef = useRef(null);
-            const backImageInputRef = useRef(null);
-            const additionalImageInputRef = useRef(null);
+            const secondImageInputRef = useRef(null); 
             const [searchQuery, setSearchQuery] = useState(""); 
 
             useEffect(() => {
@@ -274,26 +273,23 @@
                 setView("check_scans");
             };
 
-            const analyze = async (base64) => {
+            const analyze = async () => {
+                if (tempScans.length === 0) {
+                    setError("請先拍攝至少一張名片");
+                    return;
+                }
                 setIsProcessing(true);
                 setError(null);
                 
-                // 精簡模型列表：只留 2.0 (快) 和 2.5 (穩)，移除 1.5
+                // 使用雙模型備援策略
                 const models = [
                     "gemini-2.0-flash-exp", 
                     "gemini-2.5-flash-preview-09-2025"
                 ];
 
-                let imageParts = [];
-                if (tempScans.length > 0) {
-                    imageParts = tempScans.map(img => ({
-                        inlineData: { mimeType: "image/jpeg", data: img.split(',')[1] }
-                    }));
-                } else if (base64) {
-                    imageParts = [{
-                        inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] }
-                    }];
-                }
+                let imageParts = tempScans.map(img => ({
+                    inlineData: { mimeType: "image/jpeg", data: img.split(',')[1] }
+                }));
 
                 const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","phone":"","email":"","address":"","category":"工作","note":""}。若有兩張圖代表正反面，請整合資訊。company欄位請包含中文及英文名稱(若有)。category從[工作,家人,同學,朋友]選。note欄位保留空白。無Markdown。`;
 
@@ -319,9 +315,14 @@
                         });
 
                         if (!res.ok) {
-                            // 遇到錯誤直接切換，不等待
-                            console.warn(`Model ${model} failed (${res.status}), trying next...`);
-                            return await tryModel(index + 1);
+                            if ([404, 429, 500, 503].includes(res.status)) {
+                                console.warn(`Model ${model} failed (${res.status}), trying next...`);
+                                // 遇到錯誤只等 1 秒就切換
+                                await new Promise(r => setTimeout(r, 1000));
+                                return await tryModel(index + 1);
+                            }
+                            const errJson = await res.json().catch(() => ({}));
+                            throw new Error(errJson.error?.message || `API Error (${res.status})`);
                         }
 
                         return await res.json();
@@ -340,21 +341,17 @@
                     
                     setResultData(data || { category: "工作" });
                     
-                    if (tempScans.length > 0) {
-                        setCapturedImage(tempScans[0]);
-                        setBackImage(tempScans[1] || null);
-                        setAdditionalImage(null);
-                    } else if (base64) {
-                        setCapturedImage(base64);
-                        setBackImage(null);
-                    }
+                    // 分配圖片
+                    setCapturedImage(tempScans[0]);
+                    setBackImage(tempScans[1] || null);
+                    setAdditionalImage(null);
                     
                     setCurrentAvatar(null);
                     setCurrentCardId(null);
                     setView("result");
                 } catch (e) {
                     setError(e.message);
-                    if (view !== "check_scans") setView("home");
+                    // 辨識失敗時保留在確認頁面，讓用戶可以重試
                 } finally {
                     setIsProcessing(false);
                 }
@@ -384,15 +381,17 @@
                     try {
                         const base64 = await compressImage(e.target.files[0]);
                         setCurrentAvatar(base64);
+                        e.target.value = ''; // 關鍵修正：重置 input 允許重複選取
                     } catch(err) { alert("圖片處理失敗"); }
                 }
             };
 
-            const handleUpload = async (e, setter) => {
+            const handleSecondImageUpload = async (e) => {
                 if (e.target.files[0]) {
                     try {
                         const base64 = await compressImage(e.target.files[0]);
-                        setter(base64);
+                        setAdditionalImage(base64);
+                        e.target.value = ''; // 關鍵修正：重置 input 允許重複選取
                     } catch(err) { alert("圖片處理失敗"); }
                 }
             };
@@ -581,42 +580,24 @@
                                     </div>
                                 </div>
 
-                                {/* 名片快照 (背面照片在這裡) */}
+                                {/* 名片快照 (正反面整合) */}
                                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                                     <p className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
                                         <Icon name="image" size={14} /> 名片快照
                                     </p>
-                                    <div className="space-y-4">
+                                    <div className="space-y-2">
                                         {capturedImage && (
                                             <div className="relative">
                                                 <img src={capturedImage} className="w-full rounded-lg border border-gray-100" />
                                                 <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">正面</span>
                                             </div>
                                         )}
-                                        
-                                        {/* 背面照片上傳區 */}
-                                        <div className="relative">
-                                            <div className="flex justify-between items-center mb-1">
-                                                <span className="text-[10px] text-gray-400">背面照片</span>
-                                                <button onClick={() => backImageInputRef.current?.click()} className="text-blue-500 text-[10px] font-bold">
-                                                    {backImage ? "更換" : "新增"}
-                                                </button>
+                                        {backImage && (
+                                            <div className="relative">
+                                                <img src={backImage} className="w-full rounded-lg border border-gray-100" />
+                                                <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">背面</span>
                                             </div>
-                                            <input type="file" ref={backImageInputRef} className="hidden" accept="image/*" onChange={(e) => handleUpload(e, setBackImage)} />
-                                            
-                                            {backImage ? (
-                                                <div className="relative">
-                                                    <img src={backImage} className="w-full rounded-lg border border-gray-100" />
-                                                    <button onClick={() => setBackImage(null)} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full shadow-md hover:bg-red-600">
-                                                        <Icon name="trash-2" size={12} />
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <div onClick={() => backImageInputRef.current?.click()} className="w-full h-20 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 cursor-pointer">
-                                                    <Icon name="plus" size={16} />
-                                                </div>
-                                            )}
-                                        </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -635,7 +616,7 @@
                                             </button>
                                         </div>
                                     </div>
-                                    <input type="file" ref={secondImageInputRef} className="hidden" accept="image/*" onChange={(e) => handleUpload(e, setAdditionalImage)} />
+                                    <input type="file" ref={secondImageInputRef} className="hidden" accept="image/*" onChange={handleSecondImageUpload} />
                                     {additionalImage ? (
                                         <div className="relative">
                                             <img src={additionalImage} className="w-full rounded-lg border border-gray-100" />
@@ -652,7 +633,7 @@
                                 </div>
 
                                 <div className="flex gap-2">
-                                    <button onClick={() => { setView("home"); setTempScans([]); }} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">取消</button>
+                                    <button onClick={() => setView("home")} className="flex-1 bg-gray-100 text-gray-600 p-3 rounded-xl font-bold">取消</button>
                                     <button onClick={saveCard} className="flex-[2] bg-blue-600 text-white p-3 rounded-xl font-bold flex justify-center items-center gap-2">
                                         <Icon name="save" /> 儲存
                                     </button>
