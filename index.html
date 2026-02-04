@@ -253,7 +253,7 @@
                     if (window.lucide) window.lucide.createIcons();
                 }, 50);
                 return () => clearTimeout(timer);
-            }, [view, cards, tempScans, resultData, additionalImage, backImage, currentAvatar]);
+            }, [view, cards, resultData, additionalImage, backImage, currentAvatar]);
 
             const startScanFlow = () => {
                 if (!apiKey) {
@@ -271,10 +271,14 @@
             const analyze = async (base64) => {
                 setIsProcessing(true);
                 setError(null);
+                setStatusMsg("AI 辨識中...");
                 
-                const model = "gemini-1.5-flash";
+                // 修正：改回使用 gemini-2.5-flash-preview-09-2025，並加入 2.0 作為備援
+                const models = [
+                    "gemini-2.5-flash-preview-09-2025",
+                    "gemini-2.0-flash-exp"
+                ];
                 
-                // 更新提示詞：將電話分為 mobile, tel, fax
                 const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作","note":""}。
                 規則：
                 1. 姓名若有中英文請合併。
@@ -283,7 +287,12 @@
                 4. category從[工作,家人,同學,朋友]選。note留白。
                 無Markdown。`;
 
-                const tryModel = async () => {
+                const tryModel = async (index) => {
+                    if (index >= models.length) {
+                        throw new Error("無法連接 AI 服務 (404/429)，請稍後再試。");
+                    }
+                    const model = models[index];
+                    
                     try {
                         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
                             method: "POST",
@@ -299,19 +308,22 @@
                         });
 
                         if (!res.ok) {
+                            if ([400, 404, 429, 500, 503].includes(res.status)) {
+                                console.warn(`Model ${model} failed (${res.status}), trying next...`);
+                                return await tryModel(index + 1);
+                            }
                             const errJson = await res.json().catch(() => ({}));
-                            if (res.status === 429) throw new Error("免費額度已滿，請休息 1 分鐘後再試。");
                             throw new Error(errJson.error?.message || `API Error (${res.status})`);
                         }
 
                         return await res.json();
                     } catch (e) {
-                        throw e;
+                        return await tryModel(index + 1);
                     }
                 };
 
                 try {
-                    const json = await tryModel();
+                    const json = await tryModel(0);
                     
                     let text = json.candidates[0].content.parts[0].text;
                     text = text.replace(/```json|```/g, '').trim();
@@ -371,7 +383,7 @@
             };
 
             const viewSavedCard = (card) => {
-                // 為了兼容舊資料，如果舊資料只有 phone 欄位，把它放到 mobile 或 tel
+                // 為了兼容舊資料
                 const data = {...card};
                 if (data.phone && !data.mobile && !data.tel) {
                     if (data.phone.startsWith("09")) data.mobile = data.phone;
@@ -402,9 +414,6 @@
                     return companyA.localeCompare(companyB, "zh-Hant");
                 });
             }, [cards, filterCategory, searchQuery]);
-
-            // 臨時暫存，沒用到但為了不改太多結構先留著
-            const [tempScans, setTempScans] = useState([]); 
 
             return (
                 <div className="max-w-md mx-auto h-screen bg-gray-50 flex flex-col font-sans overflow-hidden border-x border-gray-200">
@@ -504,15 +513,12 @@
                                     </div>
 
                                     <div className="space-y-3">
-                                        {/* 1. 類別 */}
                                         <div className="flex items-center gap-3 border-b pb-1">
                                             <Icon name="tag" className="text-gray-400" />
                                             <select className="flex-1 bg-transparent font-bold text-sm outline-none" value={resultData.category || "工作"} onChange={e => setResultData({...resultData, category: e.target.value})}>
                                                 {["工作", "家人", "同學", "朋友"].map(c => <option key={c} value={c}>{c}</option>)}
                                             </select>
                                         </div>
-                                        
-                                        {/* 依照要求排序：公司 -> 手機 -> Email -> 市話 -> 傳真 -> 地址 */}
                                         {[
                                             { icon: "building", key: "company", label: "公司" },
                                             { icon: "smartphone", key: "mobile", label: "手機" },
@@ -527,7 +533,6 @@
                                                 <Icon name="pencil" size={14} className="text-gray-300" />
                                             </div>
                                         ))}
-
                                         <div className="flex items-start gap-3 border-b pb-1">
                                             <div className="mt-1"><Icon name="file-text" className="text-gray-400" /></div>
                                             <textarea 
@@ -541,48 +546,28 @@
                                     </div>
                                 </div>
 
-                                {/* 名片快照 (正反面整合) */}
-                                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                                    <p className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
-                                        <Icon name="image" size={14} /> 名片快照
-                                    </p>
-                                    <div className="space-y-4">
-                                        {capturedImage && (
-                                            <div className="relative">
-                                                <img src={capturedImage} className="w-full rounded-lg border border-gray-100" />
-                                                <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">正面</span>
-                                            </div>
-                                        )}
-                                        
-                                        {/* 背面照片上傳區 */}
-                                        <div className="relative">
-                                            <div className="flex justify-between items-center mb-1">
-                                                <span className="text-[10px] text-gray-400">背面照片</span>
-                                                <div className="flex gap-2">
-                                                    {backImage && (
-                                                        <button onClick={() => setBackImage(null)} className="text-red-400 text-[10px] font-bold">刪除</button>
-                                                    )}
-                                                    <button onClick={() => backImageInputRef.current?.click()} className="text-blue-500 text-[10px] font-bold">
-                                                        {backImage ? "更換" : "新增"}
-                                                    </button>
+                                {capturedImage && (
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                                        <p className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
+                                            <Icon name="image" size={14} /> 名片快照
+                                        </p>
+                                        <div className="space-y-2">
+                                            {capturedImage && (
+                                                <div className="relative">
+                                                    <img src={capturedImage} className="w-full rounded-lg border border-gray-100" />
+                                                    <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">正面</span>
                                                 </div>
-                                            </div>
-                                            <input type="file" ref={backImageInputRef} className="hidden" accept="image/*" onChange={(e) => handleUpload(e, setBackImage)} />
-                                            
-                                            {backImage ? (
+                                            )}
+                                            {backImage && (
                                                 <div className="relative">
                                                     <img src={backImage} className="w-full rounded-lg border border-gray-100" />
-                                                </div>
-                                            ) : (
-                                                <div onClick={() => backImageInputRef.current?.click()} className="w-full h-20 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 cursor-pointer">
-                                                    <Icon name="plus" size={16} />
+                                                    <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">背面</span>
                                                 </div>
                                             )}
                                         </div>
                                     </div>
-                                </div>
+                                )}
 
-                                {/* 附加照片 */}
                                 <div className="bg-white p-4 rounded-xl shadow-sm">
                                     <div className="flex justify-between items-center mb-2">
                                         <p className="text-xs font-bold text-gray-400">附加照片</p>
