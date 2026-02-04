@@ -253,13 +253,14 @@
                     if (window.lucide) window.lucide.createIcons();
                 }, 50);
                 return () => clearTimeout(timer);
-            }, [view, cards, resultData, additionalImage, backImage, currentAvatar]);
+            }, [view, cards, tempScans, resultData, additionalImage, backImage, currentAvatar]);
 
             const startScanFlow = () => {
                 if (!apiKey) {
                     setView("settings");
                     return;
                 }
+                setTempScans([]);
                 setView("scan");
             };
 
@@ -420,6 +421,9 @@
                 });
             }, [cards, filterCategory, searchQuery]);
 
+            // 暫存變數
+            const [tempScans, setTempScans] = useState([]); 
+
             return (
                 <div className="max-w-md mx-auto h-screen bg-gray-50 flex flex-col font-sans overflow-hidden border-x border-gray-200">
                     <header className="px-6 pt-12 pb-4 bg-white shadow-sm flex justify-between items-center z-10">
@@ -440,6 +444,7 @@
                                     </div>
                                 )}
                                 
+                                {/* 搜尋列 */}
                                 <div className="relative">
                                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                                         <Icon name="search" size={16} />
@@ -571,6 +576,7 @@
                                                     placeholder={f.label} 
                                                     onChange={e => setResultData({...resultData, [f.key]: e.target.value})} 
                                                 />
+                                                {/* 判斷是否顯示動作按鈕 */}
                                                 {f.type && resultData[f.key] ? (
                                                     <a 
                                                         href={f.type === 'map' ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(resultData[f.key])}` : `${f.type}:${resultData[f.key]}`}
