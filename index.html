@@ -242,7 +242,6 @@
             const avatarInputRef = useRef(null);
             const secondImageInputRef = useRef(null); 
             const [searchQuery, setSearchQuery] = useState(""); 
-            const importFileRef = useRef(null);
 
             useEffect(() => {
                 try { localStorage.setItem("snapcard_cards", JSON.stringify(cards)); }
@@ -265,6 +264,17 @@
                 setView("scan");
             };
 
+            // 手動新增功能
+            const handleManualAdd = () => {
+                setResultData({ category: "工作" });
+                setCapturedImage(null);
+                setBackImage(null);
+                setCurrentAvatar(null);
+                setAdditionalImage(null);
+                setCurrentCardId(null);
+                setView("result");
+            };
+
             const handleScanCapture = (base64) => {
                 setCapturedImage(base64);
                 analyze(base64);
@@ -274,10 +284,9 @@
                 setIsProcessing(true);
                 setError(null);
                 
-                // 使用雙模型備援策略
                 const models = [
-                    "gemini-2.0-flash-exp", 
-                    "gemini-2.5-flash-preview-09-2025"
+                    "gemini-2.5-flash-preview-09-2025",
+                    "gemini-2.0-flash-exp"
                 ];
 
                 let imageParts = [{
@@ -338,7 +347,6 @@
                     
                     setResultData(data || { category: "工作" });
                     
-                    // 重置其他圖片欄位
                     setBackImage(null);
                     setAdditionalImage(null);
                     setCurrentAvatar(null);
@@ -514,8 +522,8 @@
                                                 {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                {/* 修改：姓名 (text-sm 粗體 黑) */}
-                                                <div className="font-bold text-gray-900 text-sm truncate">{c.name || "未填寫姓名"}</div>
+                                                {/* 修改：姓名 (text-lg 粗體 黑) */}
+                                                <div className="font-bold text-gray-900 text-lg truncate">{c.name || "未填寫姓名"}</div>
                                                 {/* 修改：公司 (text-sm 灰色) */}
                                                 <div className="text-sm text-gray-500 truncate">{c.company || "未填寫公司"}</div>
                                             </div>
@@ -601,7 +609,6 @@
                                             </select>
                                         </div>
                                         
-                                        {/* 新增撥號與寄信按鈕，恢復詳細列表 */}
                                         {[
                                             { icon: "building", key: "company", label: "公司" },
                                             { icon: "smartphone", key: "mobile", label: "手機", type: "tel", color: "text-green-500 bg-green-50" },
@@ -709,10 +716,25 @@
                     </main>
 
                     {view === "home" && (
-                        <div className="fixed bottom-6 left-0 w-full flex justify-center pointer-events-none">
-                            <button onClick={startScanFlow} className="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform pointer-events-auto border-4 border-white hover:bg-blue-700">
+                        <div className="fixed bottom-6 left-0 w-full flex justify-center pointer-events-none z-20 gap-6 items-end">
+                            {/* 手動輸入按鈕 */}
+                            <button 
+                                onClick={handleManualAdd}
+                                className="bg-gray-700 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-xl active:scale-90 transition-transform pointer-events-auto border-4 border-white hover:bg-gray-600 mb-1"
+                            >
+                                <Icon name="pencil" size={20} />
+                            </button>
+                            
+                            {/* 掃描按鈕 */}
+                            <button 
+                                onClick={startScanFlow} 
+                                className="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform pointer-events-auto border-4 border-white hover:bg-blue-700"
+                            >
                                 <Icon name="camera" size={32} />
                             </button>
+                            
+                            {/* 佔位，保持平衡 */}
+                            <div className="w-12"></div>
                         </div>
                     )}
 
