@@ -229,7 +229,7 @@
             });
         };
 
-        // --- 相機元件 (WYSIWYG 裁切版) ---
+        // --- 相機元件 (所見即所得裁切版) ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [error, setError] = useState(null);
@@ -265,22 +265,32 @@
                 const videoRatio = video.videoWidth / video.videoHeight;
                 const displayRatio = video.clientWidth / video.clientHeight;
                 
+                // 模擬 object-fit: cover 的計算邏輯
                 let sx = 0, sy = 0, sWidth = video.videoWidth, sHeight = video.videoHeight;
 
                 if (videoRatio > displayRatio) {
-                    // 影像比螢幕寬 => 裁掉左右
+                    // 影片比螢幕寬，裁切左右
                     sWidth = video.videoHeight * displayRatio;
                     sx = (video.videoWidth - sWidth) / 2;
                 } else {
-                    // 影像比螢幕高 => 裁掉上下
+                    // 影片比螢幕高，裁切上下
                     sHeight = video.videoWidth / displayRatio;
                     sy = (video.videoHeight - sHeight) / 2;
                 }
 
-                // 2. 設定輸出尺寸
-                const MAX_DIM = 1000;
-                let destWidth = sWidth;
-                let destHeight = sHeight;
+                // 2. 計算藍色掃描框在來源影片中的位置
+                // 掃描框寬度是螢幕的 75% (w-3/4)，比例是 1.6:1
+                const frameWidthInSource = sWidth * 0.75;
+                const frameHeightInSource = frameWidthInSource / 1.6;
+
+                // 掃描框居中
+                const frameX = sx + (sWidth - frameWidthInSource) / 2;
+                const frameY = sy + (sHeight - frameHeightInSource) / 2;
+
+                // 3. 設定輸出尺寸 (記憶體安全限制)
+                const MAX_DIM = 800;
+                let destWidth = frameWidthInSource;
+                let destHeight = frameHeightInSource;
                 
                 if (destWidth > MAX_DIM || destHeight > MAX_DIM) {
                     const scale = Math.min(MAX_DIM / destWidth, MAX_DIM / destHeight);
@@ -291,9 +301,9 @@
                 canvas.width = destWidth;
                 canvas.height = destHeight;
                 
-                // 3. 繪製裁切後的影像
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, destWidth, destHeight);
+                // 僅繪製掃描框範圍內的影像
+                ctx.drawImage(video, frameX, frameY, frameWidthInSource, frameHeightInSource, 0, 0, destWidth, destHeight);
                 
                 onCapture(canvas.toDataURL("image/jpeg", 0.7));
             };
@@ -362,6 +372,7 @@
                         setIsLoadingDB(true);
                         const dbCards = await dbUtils.getAll();
                         
+                        // 檢查是否已遷移過
                         const hasMigrated = localStorage.getItem("snapcard_migrated");
                         const localCardsStr = localStorage.getItem("snapcard_cards");
 
@@ -733,7 +744,9 @@
                                     ))}
                                 </div>
 
-                                {filteredCards.length === 0 ? (
+                                {isLoadingDB ? (
+                                    <div className="text-center py-10 text-gray-400">載入資料中...</div>
+                                ) : filteredCards.length === 0 ? (
                                     <div className="text-center py-20 text-gray-400 text-sm">
                                         {cards.length === 0 ? "暫無名片" : "找不到符合的名片"}
                                     </div>
@@ -744,10 +757,10 @@
                                                 {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                {/* 修改：姓名 (text-sm 粗體 黑) */}
-                                                <div className="font-bold text-gray-900 text-sm truncate">{c.name || "未填寫姓名"}</div>
-                                                {/* 修改：公司 (text-sm 灰色) */}
-                                                <div className="text-sm text-gray-500 truncate">{c.company || "未填寫公司"}</div>
+                                                {/* 修改：姓名 (text-base 粗體 黑) */}
+                                                <div className="font-bold text-gray-900 text-base truncate">{c.name || "未填寫姓名"}</div>
+                                                {/* 修改：公司 (text-base 灰色) */}
+                                                <div className="text-base text-gray-500 truncate">{c.company || "未填寫公司"}</div>
                                             </div>
                                             <button onClick={(e) => handleDeleteCard(c.id, e)} className="text-gray-300 hover:text-red-500">
                                                 <Icon name="trash-2" />
@@ -835,7 +848,6 @@
                                             </select>
                                         </div>
                                         
-                                        {/* 新增撥號與寄信按鈕，恢復詳細列表 */}
                                         {[
                                             { icon: "building", key: "company", label: "公司" },
                                             { icon: "smartphone", key: "mobile", label: "手機", type: "tel", color: "text-green-500 bg-green-50" },
