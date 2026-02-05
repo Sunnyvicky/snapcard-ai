@@ -4,20 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SnapCard AI - 專業人脈管家</title>
-    
-    <!-- PWA 設定 -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="SnapCard">
-    <meta name="theme-color" content="#1e3a8a">
-    
-    <!-- 新版 App Icon: 深藍立體光影 + 金色掃描線 -->
-    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%233b82f6'/%3E%3Cstop offset='1' stop-color='%230f172a'/%3E%3C/linearGradient%3E%3Cfilter id='s'%3E%3CfeDropShadow dx='0' dy='4' stdDeviation='4' flood-opacity='0.3'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='512' height='512' rx='120' fill='url(%23g)'/%3E%3Crect x='96' y='156' width='320' height='200' rx='24' fill='%23fff' filter='url(%23s)'/%3E%3Ccircle cx='356' cy='206' r='32' fill='%23e2e8f0'/%3E%3Crect x='136' y='190' width='140' height='32' rx='8' fill='%23cbd5e1'/%3E%3Crect x='136' y='250' width='240' height='20' rx='6' fill='%23e2e8f0'/%3E%3Crect x='136' y='290' width='180' height='20' rx='6' fill='%23e2e8f0'/%3E%3Cpath d='M64 256h384' stroke='%23f59e0b' stroke-width='24' stroke-linecap='round' filter='url(%23s)'/%3E%3C/svg%3E">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%233b82f6'/%3E%3Cstop offset='1' stop-color='%230f172a'/%3E%3C/linearGradient%3E%3Cfilter id='s'%3E%3CfeDropShadow dx='0' dy='4' stdDeviation='4' flood-opacity='0.3'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='512' height='512' rx='120' fill='url(%23g)'/%3E%3Crect x='96' y='156' width='320' height='200' rx='24' fill='%23fff' filter='url(%23s)'/%3E%3Ccircle cx='356' cy='206' r='32' fill='%23e2e8f0'/%3E%3Crect x='136' y='190' width='140' height='32' rx='8' fill='%23cbd5e1'/%3E%3Crect x='136' y='250' width='240' height='20' rx='6' fill='%23e2e8f0'/%3E%3Crect x='136' y='290' width='180' height='20' rx='6' fill='%23e2e8f0'/%3E%3Cpath d='M64 256h384' stroke='%23f59e0b' stroke-width='24' stroke-linecap='round' filter='url(%23s)'/%3E%3C/svg%3E">
-    
-    <!-- PWA Manifest (更新圖示) -->
-    <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22SnapCard%20AI%22%2C%22short_name%22%3A%22SnapCard%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23ffffff%22%2C%22theme_color%22%3A%22%231e3a8a%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20512%20512'%253E%253Cdefs%253E%253ClinearGradient%20id%3D'g'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'1'%253E%253Cstop%20offset%3D'0'%20stop-color%3D'%25233b82f6'%2F%253E%253Cstop%20offset%3D'1'%20stop-color%3D'%25230f172a'%2F%253E%253C%2FlinearGradient%253E%253Cfilter%20id%3D's'%253E%253CfeDropShadow%20dx%3D'0'%20dy%3D'4'%20stdDeviation%3D'4'%20flood-opacity%3D'0.3'%2F%253E%253C%2Ffilter%253E%253C%2Fdefs%253E%253Crect%20width%3D'512'%20height%3D'512'%20rx%3D'120'%20fill%3D'url(%2523g)'%2F%253E%253Crect%20x%3D'96'%20y%3D'156'%20width%3D'320'%20height%3D'200'%20rx%3D'24'%20fill%3D'%2523fff'%20filter%3D'url(%2523s)'%2F%253E%253Ccircle%20cx%3D'356'%20cy%3D'206'%20r%3D'32'%20fill%3D'%2523e2e8f0'%2F%253E%253Crect%20x%3D'136'%20y%3D'190'%20width%3D'140'%20height%3D'32'%20rx%3D'8'%20fill%3D'%2523cbd5e1'%2F%253E%253Crect%20x%3D'136'%20y%3D'250'%20width%3D'240'%20height%3D'20'%20rx%3D'6'%20fill%3D'%2523e2e8f0'%2F%253E%253Crect%20x%3D'136'%20y%3D'290'%20width%3D'180'%20height%3D'20'%20rx%3D'6'%20fill%3D'%2523e2e8f0'%2F%253E%253Cpath%20d%3D'M64%20256h384'%20stroke%3D'%2523f59e0b'%20stroke-width%3D'24'%20stroke-linecap%3D'round'%20filter%3D'url(%2523s)'%2F%253E%253C%2Fsvg%253E%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
-    
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -49,9 +35,8 @@
             left: 0;
             width: 100%;
             height: 2px;
-            /* 修正：改成橘色 */
-            background: #f97316;
-            box-shadow: 0 0 10px #f97316;
+            background: #3b82f6;
+            box-shadow: 0 0 10px #3b82f6;
             animation: scan 2s linear infinite;
         }
         /* 啟動畫面樣式 */
@@ -74,11 +59,10 @@
     <!-- 1. 預先顯示的啟動畫面，解決白屏等待感 -->
     <div id="root">
         <div class="splash-screen">
-            <div style="width: 64px; height: 64px; background: linear-gradient(135deg, #3b82f6 0%, #0f172a 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.4);">
+            <div style="width: 64px; height: 64px; background-color: #2563eb; border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.4);">
                 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
             </div>
             <h1 style="font-size: 20px; font-weight: 900; color: #1e293b; font-family: sans-serif; letter-spacing: -0.5px;">SNAPCARD AI</h1>
-            <!-- 修正：文字更新為「人脈，是最好的資產」 -->
             <p style="font-size: 14px; color: #64748b; font-family: sans-serif; margin-top: 8px; letter-spacing: 1px;">人脈，是最好的資產</p>
         </div>
     </div>
@@ -230,7 +214,7 @@
             });
         };
 
-        // --- 相機元件 ---
+        // --- 相機元件 (WYSIWYG 裁切版) ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [error, setError] = useState(null);
@@ -262,36 +246,49 @@
                 const video = videoRef.current;
                 const canvas = document.createElement("canvas");
                 
+                // 1. 計算裁切區域 (所見即所得核心)
+                // 目標：截取藍色框框內的範圍，而非整張相機畫面
                 const videoRatio = video.videoWidth / video.videoHeight;
                 const displayRatio = video.clientWidth / video.clientHeight;
                 
-                let sx = 0, sy = 0, sWidth = video.videoWidth, sHeight = video.videoHeight;
+                let visibleW, visibleH, visibleX, visibleY;
 
+                // 步驟 A: 計算螢幕上實際顯示的影片區域 (去除被 cover 裁掉的部分)
                 if (videoRatio > displayRatio) {
-                    sWidth = video.videoHeight * displayRatio;
-                    sx = (video.videoWidth - sWidth) / 2;
+                    // 影片比螢幕寬 -> 裁掉左右
+                    visibleH = video.videoHeight;
+                    visibleW = visibleH * displayRatio;
+                    visibleY = 0;
+                    visibleX = (video.videoWidth - visibleW) / 2;
                 } else {
-                    sHeight = video.videoWidth / displayRatio;
-                    sy = (video.videoHeight - sHeight) / 2;
+                    // 影片比螢幕高 -> 裁掉上下
+                    visibleW = video.videoWidth;
+                    visibleH = visibleW / displayRatio;
+                    visibleX = 0;
+                    visibleY = (video.videoHeight - visibleH) / 2;
                 }
 
-                const MAX_DIM = 1000;
-                let destWidth = sWidth;
-                let destHeight = sHeight;
-                
-                if (destWidth > MAX_DIM || destHeight > MAX_DIM) {
-                    const scale = Math.min(MAX_DIM / destWidth, MAX_DIM / destHeight);
-                    destWidth *= scale;
-                    destHeight *= scale;
-                }
+                // 步驟 B: 計算掃描框在原始影片中的位置
+                // 掃描框 CSS 是 w-3/4 (75% 螢幕寬度), aspect-[1.6/1]
+                const frameWidthInSource = visibleW * 0.75; 
+                const frameHeightInSource = frameWidthInSource / 1.6;
 
-                canvas.width = destWidth;
-                canvas.height = destHeight;
+                // 步驟 C: 計算裁切起始點 (居中裁切)
+                const cropX = visibleX + (visibleW - frameWidthInSource) / 2;
+                const cropY = visibleY + (visibleH - frameHeightInSource) / 2;
+
+                // 2. 設定輸出尺寸 (維持記憶體安全限制, 但保證清晰度)
+                const outputWidth = 1000;
+                const outputHeight = outputWidth / 1.6;
+
+                canvas.width = outputWidth;
+                canvas.height = outputHeight;
                 
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, destWidth, destHeight);
+                // drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
+                ctx.drawImage(video, cropX, cropY, frameWidthInSource, frameHeightInSource, 0, 0, outputWidth, outputHeight);
                 
-                onCapture(canvas.toDataURL("image/jpeg", 0.7));
+                onCapture(canvas.toDataURL("image/jpeg", 0.8));
             };
 
             return (
@@ -358,7 +355,6 @@
                         setIsLoadingDB(true);
                         const dbCards = await dbUtils.getAll();
                         
-                        // 檢查是否已遷移過
                         const hasMigrated = localStorage.getItem("snapcard_migrated");
                         const localCardsStr = localStorage.getItem("snapcard_cards");
 
@@ -406,7 +402,6 @@
                 setView("scan");
             };
 
-            // 手動新增功能
             const handleManualAdd = () => {
                 setResultData({ category: "工作" });
                 setCapturedImage(null);
@@ -448,8 +443,7 @@
                         throw new Error("系統忙線中 (429)，請休息 1 分鐘後再試。");
                     }
                     const model = models[index];
-                    // 修正文字: AI 辨識中
-                    setStatusMsg("AI 辨識中...");
+                    setStatusMsg(index === 0 ? "AI 辨識中..." : "切換備用線路...");
                     
                     try {
                         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
@@ -490,7 +484,6 @@
                     
                     setResultData(data || { category: "工作" });
                     
-                    // 重置其他圖片欄位
                     setBackImage(null);
                     setAdditionalImage(null);
                     setCurrentAvatar(null);
@@ -504,7 +497,6 @@
                 }
             };
 
-            // 改寫儲存功能：使用 IndexedDB
             const saveCard = async () => {
                 const newData = { 
                     id: currentCardId || Date.now(), 
@@ -592,10 +584,8 @@
                 });
             }, [cards, filterCategory, searchQuery]);
 
-            // 暫存變數
             const [tempScans, setTempScans] = useState([]); 
 
-            // 匯出資料 (修正版：支援 Blob 下載, 強制下載, 增加 alert)
             const exportData = () => {
                 if (cards.length === 0) {
                     alert("目前沒有名片資料可供匯出");
@@ -622,7 +612,6 @@
                 }, 100);
             };
 
-            // 匯入資料 (寫入 IndexedDB)
             const importData = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -651,13 +640,12 @@
                 e.target.value = '';
             };
 
-            // 清空所有資料
             const clearAllData = async () => {
                 if(confirm("警告：這將刪除所有資料。確定嗎？")) {
                     try {
                         await dbUtils.clear();
                         setCards([]);
-                        localStorage.removeItem("snapcard_cards"); // 清除舊遺留
+                        localStorage.removeItem("snapcard_cards"); 
                         alert("資料已清空");
                     } catch (e) {
                         alert("清除失敗");
@@ -730,9 +718,7 @@
                                     ))}
                                 </div>
 
-                                {isLoadingDB ? (
-                                    <div className="text-center py-10 text-gray-400">載入資料中...</div>
-                                ) : filteredCards.length === 0 ? (
+                                {filteredCards.length === 0 ? (
                                     <div className="text-center py-20 text-gray-400 text-sm">
                                         {cards.length === 0 ? "暫無名片" : "找不到符合的名片"}
                                     </div>
@@ -743,10 +729,8 @@
                                                 {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                {/* 修改：姓名 (text-lg 粗體 黑) */}
                                                 <div className="font-bold text-gray-900 text-lg truncate">{c.name || "未填寫姓名"}</div>
-                                                {/* 修改：公司 (text-sm 灰色) */}
-                                                <div className="text-sm text-gray-500 truncate">{c.company || "未填寫公司"}</div>
+                                                <div className="text-xs text-gray-500 truncate">{c.company || "未填寫公司"}</div>
                                             </div>
                                             <button onClick={(e) => handleDeleteCard(c.id, e)} className="text-gray-300 hover:text-red-500">
                                                 <Icon name="trash-2" />
@@ -850,6 +834,7 @@
                                                     placeholder={f.label} 
                                                     onChange={e => setResultData({...resultData, [f.key]: e.target.value})} 
                                                 />
+                                                {/* 判斷是否顯示動作按鈕 */}
                                                 {f.type && resultData[f.key] ? (
                                                     <a 
                                                         href={f.type === 'map' ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(resultData[f.key])}` : `${f.type}:${resultData[f.key]}`}
