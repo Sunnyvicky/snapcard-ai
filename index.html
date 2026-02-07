@@ -4,6 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SnapCard AI - 專業人脈管家</title>
+    
+    <!-- PWA 設定 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SnapCard">
+    <meta name="theme-color" content="#1e3a8a">
+    
+    <!-- App Icon: 深藍背景 + 白色名片 + 金色線條 -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%231e3a8a'/%3E%3Cstop offset='1' stop-color='%230f172a'/%3E%3C/linearGradient%3E%3Cfilter id='shadow'%3E%3CfeDropShadow dx='0' dy='8' stdDeviation='12' flood-opacity='0.25'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='512' height='512' rx='120' fill='url(%23bg)'/%3E%3C!-- 名片本體 --%3E%3Cg filter='url(%23shadow)'%3E%3Crect x='86' y='156' width='340' height='200' rx='20' fill='white'/%3E%3Crect x='86' y='190' width='340' height='8' fill='%23f59e0b'/%3E%3Ccircle cx='160' cy='256' r='35' fill='%23e2e8f0'/%3E%3Crect x='220' y='236' width='140' height='16' rx='4' fill='%2394a3b8'/%3E%3Crect x='220' y='266' width='100' height='12' rx='3' fill='%23cbd5e1'/%3E%3C/g%3E%3C/svg%3E">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%231e3a8a'/%3E%3Cstop offset='1' stop-color='%230f172a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='120' fill='url(%23bg)'/%3E%3Crect x='86' y='156' width='340' height='200' rx='20' fill='white'/%3E%3Crect x='86' y='190' width='340' height='8' fill='%23f59e0b'/%3E%3Ccircle cx='160' cy='256' r='35' fill='%23e2e8f0'/%3E%3Crect x='220' y='236' width='140' height='16' rx='4' fill='%2394a3b8'/%3E%3Crect x='220' y='266' width='100' height='12' rx='3' fill='%23cbd5e1'/%3E%3C/svg%3E">
+
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -24,7 +35,7 @@
             z-index: 10;
             transform: scaleX(1); /* 確保後鏡頭不鏡像 */
         }
-        /* 掃描線動畫 */
+        /* 掃描線動畫 (橘金色) */
         @keyframes scan {
             0% { top: 0%; opacity: 0; }
             50% { opacity: 1; }
@@ -35,8 +46,8 @@
             left: 0;
             width: 100%;
             height: 2px;
-            background: #3b82f6;
-            box-shadow: 0 0 10px #3b82f6;
+            background: #f97316;
+            box-shadow: 0 0 10px #f97316;
             animation: scan 2s linear infinite;
         }
         /* 啟動畫面樣式 */
@@ -56,10 +67,10 @@
     </style>
 </head>
 <body>
-    <!-- 1. 預先顯示的啟動畫面，解決白屏等待感 -->
+    <!-- 1. 預先顯示的啟動畫面 -->
     <div id="root">
         <div class="splash-screen">
-            <div style="width: 64px; height: 64px; background: linear-gradient(135deg, #3b82f6 0%, #0f172a 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.4);">
+            <div style="width: 64px; height: 64px; background: linear-gradient(135deg, #3b82f6 0%, #0f172a 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.4);">
                 <!-- 名片 Logo -->
                 <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 512 512" fill="none">
                     <rect x="96" y="156" width="320" height="200" rx="24" fill="white"/>
@@ -253,22 +264,33 @@
                 const video = videoRef.current;
                 const canvas = document.createElement("canvas");
                 
+                // 1. 計算裁切區域 (所見即所得)
                 const videoRatio = video.videoWidth / video.videoHeight;
                 const displayRatio = video.clientWidth / video.clientHeight;
                 
                 let sx = 0, sy = 0, sWidth = video.videoWidth, sHeight = video.videoHeight;
 
                 if (videoRatio > displayRatio) {
+                    // 影像比螢幕寬，裁掉左右
                     sWidth = video.videoHeight * displayRatio;
                     sx = (video.videoWidth - sWidth) / 2;
                 } else {
+                    // 影像比螢幕高，裁掉上下
                     sHeight = video.videoWidth / displayRatio;
                     sy = (video.videoHeight - sHeight) / 2;
                 }
 
+                // 2. 計算藍色掃描框在原始影片中的位置
+                const frameWidthInSource = sWidth * 0.75; 
+                const frameHeightInSource = frameWidthInSource / 1.6;
+
+                const frameX = sx + (sWidth - frameWidthInSource) / 2;
+                const frameY = sy + (sHeight - frameHeightInSource) / 2;
+
+                // 3. 設定輸出尺寸
                 const MAX_DIM = 1000;
-                let destWidth = sWidth;
-                let destHeight = sHeight;
+                let destWidth = frameWidthInSource;
+                let destHeight = frameHeightInSource;
                 
                 if (destWidth > MAX_DIM || destHeight > MAX_DIM) {
                     const scale = Math.min(MAX_DIM / destWidth, MAX_DIM / destHeight);
@@ -280,7 +302,8 @@
                 canvas.height = destHeight;
                 
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, destWidth, destHeight);
+                // 僅繪製框內的影像
+                ctx.drawImage(video, frameX, frameY, frameWidthInSource, frameHeightInSource, 0, 0, destWidth, destHeight);
                 
                 onCapture(canvas.toDataURL("image/jpeg", 0.7));
             };
@@ -336,20 +359,20 @@
             const [searchQuery, setSearchQuery] = useState(""); 
             const importFileRef = useRef(null); 
 
-            // 啟動畫面控制
             useEffect(() => {
                 const timer = setTimeout(() => setShowSplash(false), 2000);
+                if (navigator.storage && navigator.storage.persist) {
+                    navigator.storage.persist().then(granted => console.log("Persistence:", granted));
+                }
                 return () => clearTimeout(timer);
             }, []);
 
-            // 初始化時讀取 IndexedDB
             useEffect(() => {
                 const loadCards = async () => {
                     try {
                         setIsLoadingDB(true);
                         const dbCards = await dbUtils.getAll();
                         
-                        // 檢查是否已遷移過
                         const hasMigrated = localStorage.getItem("snapcard_migrated");
                         const localCardsStr = localStorage.getItem("snapcard_cards");
 
@@ -397,7 +420,6 @@
                 setView("scan");
             };
 
-            // 手動新增功能
             const handleManualAdd = () => {
                 setResultData({ category: "工作" });
                 setCapturedImage(null);
@@ -419,11 +441,10 @@
                 setIsProcessing(true);
                 setError(null);
                 
-                // 策略修正：擴充模型清單，涵蓋 2.0-exp, 1.5-flash, 1.5-flash-8b
+                // 修正：模型優先順序 -> 2.0 (快) -> 1.5 (穩)
                 const models = [
                     "gemini-2.0-flash-exp", 
-                    "gemini-1.5-flash",
-                    "gemini-1.5-flash-8b"
+                    "gemini-1.5-flash"
                 ];
 
                 let imageParts = [{
@@ -460,10 +481,10 @@
                         });
 
                         if (!res.ok) {
-                            if ([400, 404, 429, 500, 503].includes(res.status)) {
+                            if ([404, 429, 500, 503].includes(res.status)) {
                                 console.warn(`Model ${model} failed (${res.status}), trying next...`);
-                                // 稍微延遲避免過快請求
-                                await new Promise(r => setTimeout(r, 500));
+                                // 智慧等待：切換前小等一下
+                                await new Promise(r => setTimeout(r, 1000));
                                 return await tryModel(index + 1);
                             }
                             const errJson = await res.json().catch(() => ({}));
@@ -486,7 +507,6 @@
                     
                     setResultData(data || { category: "工作" });
                     
-                    // 重置其他圖片欄位
                     setBackImage(null);
                     setAdditionalImage(null);
                     setCurrentAvatar(null);
@@ -500,7 +520,6 @@
                 }
             };
 
-            // 改寫儲存功能：使用 IndexedDB
             const saveCard = async () => {
                 const newData = { 
                     id: currentCardId || Date.now(), 
@@ -588,17 +607,14 @@
                 });
             }, [cards, filterCategory, searchQuery]);
 
-            // 暫存變數
             const [tempScans, setTempScans] = useState([]); 
 
-            // 匯出資料 (修正版：支援 Blob 下載, 強制下載, 增加 alert)
             const exportData = () => {
                 if (cards.length === 0) {
                     alert("目前沒有名片資料可供匯出");
                     return;
                 }
                 const dataStr = JSON.stringify(cards, null, 2);
-                // 關鍵：使用 octet-stream 強制瀏覽器下載，避免直接開啟
                 const blob = new Blob([dataStr], { type: "application/octet-stream" });
                 const url = URL.createObjectURL(blob);
                 
@@ -619,7 +635,6 @@
                 }, 100);
             };
 
-            // 匯入資料 (寫入 IndexedDB)
             const importData = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -648,7 +663,6 @@
                 e.target.value = '';
             };
 
-            // 清空所有資料
             const clearAllData = async () => {
                 if(confirm("警告：這將刪除所有資料。確定嗎？")) {
                     try {
@@ -668,10 +682,10 @@
                         <div style={{ width: '64px', height: '64px', background: 'linear-gradient(135deg, #3b82f6 0%, #0f172a 100%)', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.4)' }}>
                             <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 512 512" fill="none">
                                 <rect x="96" y="156" width="320" height="200" rx="24" fill="white"/>
-                                <rect x="136" y="190" width="140" height="32" rx="8" fill="#cbd5e1"/>
-                                <rect x="136" y="250" width="240" height="20" rx="6" fill="#e2e8f0"/>
-                                <rect x="136" y="290" width="180" height="20" rx="6" fill="#e2e8f0"/>
-                                <path d="M64 256h384" stroke="#f59e0b" strokeWidth="32" strokeLinecap="round"/>
+                                <rect x="96" y="190" width="320" height="16" fill="#f59e0b"/>
+                                <circle cx="170" cy="256" r="30" fill="#cbd5e1"/>
+                                <rect x="230" y="240" width="120" height="16" rx="4" fill="#94a3b8"/>
+                                <rect x="230" y="270" width="80" height="12" rx="3" fill="#e2e8f0"/>
                             </svg>
                         </div>
                         <h1 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', fontFamily: 'sans-serif', letterSpacing: '-0.5px' }}>SNAPCARD AI</h1>
@@ -740,8 +754,8 @@
                                             <div className="flex-1 min-w-0">
                                                 {/* 修改：姓名 (text-base 粗體 黑) */}
                                                 <div className="font-bold text-gray-900 text-base truncate">{c.name || "未填寫姓名"}</div>
-                                                {/* 修改：公司 (text-base 灰色) */}
-                                                <div className="text-base text-gray-500 truncate">{c.company || "未填寫公司"}</div>
+                                                {/* 修改：公司 (text-sm 灰色) */}
+                                                <div className="text-sm text-gray-500 truncate">{c.company || "未填寫公司"}</div>
                                             </div>
                                             <button onClick={(e) => handleDeleteCard(c.id, e)} className="text-gray-300 hover:text-red-500">
                                                 <Icon name="trash-2" />
