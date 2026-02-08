@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -46,8 +46,8 @@
             left: 0;
             width: 100%;
             height: 2px;
-            background: #f97316;
-            box-shadow: 0 0 10px #f97316;
+            background: #3b82f6;
+            box-shadow: 0 0 10px #3b82f6;
             animation: scan 2s linear infinite;
         }
         /* 啟動畫面樣式 */
@@ -264,7 +264,7 @@
                 const video = videoRef.current;
                 const canvas = document.createElement("canvas");
                 
-                // 所見即所得裁切邏輯
+                // 1. 計算裁切區域 (所見即所得)
                 const videoRatio = video.videoWidth / video.videoHeight;
                 const displayRatio = video.clientWidth / video.clientHeight;
                 
@@ -278,13 +278,14 @@
                     sy = (video.videoHeight - sHeight) / 2;
                 }
 
-                // 掃描框位置 (w-3/4 = 75%, 1.6:1 aspect)
+                // 2. 計算藍色掃描框在原始影片中的位置
                 const frameWidthInSource = sWidth * 0.75; 
                 const frameHeightInSource = frameWidthInSource / 1.6;
 
                 const frameX = sx + (sWidth - frameWidthInSource) / 2;
                 const frameY = sy + (sHeight - frameHeightInSource) / 2;
 
+                // 3. 設定輸出尺寸
                 const MAX_DIM = 1000;
                 let destWidth = frameWidthInSource;
                 let destHeight = frameHeightInSource;
@@ -357,6 +358,9 @@
 
             useEffect(() => {
                 const timer = setTimeout(() => setShowSplash(false), 2000);
+                if (navigator.storage && navigator.storage.persist) {
+                    navigator.storage.persist().then(granted => console.log("Persistence:", granted));
+                }
                 return () => clearTimeout(timer);
             }, []);
 
@@ -365,6 +369,7 @@
                     try {
                         setIsLoadingDB(true);
                         const dbCards = await dbUtils.getAll();
+                        
                         const hasMigrated = localStorage.getItem("snapcard_migrated");
                         const localCardsStr = localStorage.getItem("snapcard_cards");
 
@@ -384,8 +389,10 @@
                                 console.error("Migration error", e);
                             }
                         }
+                        
                         setCards(dbCards.sort((a, b) => b.id - a.id));
                     } catch (err) {
+                        console.error("DB Load Error", err);
                         setError("資料庫讀取失敗");
                     } finally {
                         setIsLoadingDB(false);
@@ -430,11 +437,10 @@
                 setIsProcessing(true);
                 setError(null);
                 
-                // 修正：回歸最穩定的 1.5-flash 作為主力，1.5-8b 作為備援
-                // 這些模型免費額度最慷慨
+                // 修正：將 2.0 設為首選 (速度快、額度好)，2.5 設為備援
                 const models = [
-                    "gemini-1.5-flash",
-                    "gemini-1.5-flash-8b"
+                    "gemini-2.0-flash-exp", 
+                    "gemini-2.5-flash-preview-09-2025"
                 ];
 
                 let imageParts = [{
@@ -454,7 +460,7 @@
                         throw new Error("系統忙線中 (429)，請休息 1 分鐘後再試。");
                     }
                     const model = models[index];
-                    setStatusMsg("AI 辨識中...");
+                    setStatusMsg(index === 0 ? "AI 辨識中..." : "嘗試備用線路...");
                     
                     try {
                         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
@@ -473,7 +479,7 @@
                         if (!res.ok) {
                             if ([404, 429, 500, 503].includes(res.status)) {
                                 console.warn(`Model ${model} failed (${res.status}), trying next...`);
-                                // 智慧等待
+                                // 遇到 429 等待 1 秒再切換
                                 await new Promise(r => setTimeout(r, 1000));
                                 return await tryModel(index + 1);
                             }
@@ -833,7 +839,6 @@
                                             </select>
                                         </div>
                                         
-                                        {/* 新增撥號與寄信按鈕，恢復詳細列表 */}
                                         {[
                                             { icon: "building", key: "company", label: "公司" },
                                             { icon: "smartphone", key: "mobile", label: "手機", type: "tel", color: "text-green-500 bg-green-50" },
