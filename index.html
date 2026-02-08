@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-title" content="SnapCard">
     <meta name="theme-color" content="#1e3a8a">
     
-    <!-- App Icon: 深藍背景 + 白色名片 + 金色線條 -->
+    <!-- App Icon: 深藍背景 + 白色名片 + 橘金色線條 (與啟動畫面一致) -->
     <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%231e3a8a'/%3E%3Cstop offset='1' stop-color='%230f172a'/%3E%3C/linearGradient%3E%3Cfilter id='shadow'%3E%3CfeDropShadow dx='0' dy='8' stdDeviation='12' flood-opacity='0.25'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='512' height='512' rx='120' fill='url(%23bg)'/%3E%3C!-- 名片本體 --%3E%3Cg filter='url(%23shadow)'%3E%3Crect x='86' y='156' width='340' height='200' rx='20' fill='white'/%3E%3Crect x='86' y='190' width='340' height='8' fill='%23f59e0b'/%3E%3Ccircle cx='160' cy='256' r='35' fill='%23e2e8f0'/%3E%3Crect x='220' y='236' width='140' height='16' rx='4' fill='%2394a3b8'/%3E%3Crect x='220' y='266' width='100' height='12' rx='3' fill='%23cbd5e1'/%3E%3C/g%3E%3C/svg%3E">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%231e3a8a'/%3E%3Cstop offset='1' stop-color='%230f172a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='120' fill='url(%23bg)'/%3E%3Crect x='86' y='156' width='340' height='200' rx='20' fill='white'/%3E%3Crect x='86' y='190' width='340' height='8' fill='%23f59e0b'/%3E%3Ccircle cx='160' cy='256' r='35' fill='%23e2e8f0'/%3E%3Crect x='220' y='236' width='140' height='16' rx='4' fill='%2394a3b8'/%3E%3Crect x='220' y='266' width='100' height='12' rx='3' fill='%23cbd5e1'/%3E%3C/svg%3E">
 
@@ -35,7 +35,7 @@
             z-index: 10;
             transform: scaleX(1); /* 確保後鏡頭不鏡像 */
         }
-        /* 掃描線動畫 */
+        /* 掃描線動畫 (橘金色) */
         @keyframes scan {
             0% { top: 0%; opacity: 0; }
             50% { opacity: 1; }
@@ -46,8 +46,8 @@
             left: 0;
             width: 100%;
             height: 2px;
-            background: #3b82f6;
-            box-shadow: 0 0 10px #3b82f6;
+            background: #f97316;
+            box-shadow: 0 0 10px #f97316;
             animation: scan 2s linear infinite;
         }
         /* 啟動畫面樣式 */
@@ -71,10 +71,10 @@
     <div id="root">
         <div class="splash-screen">
             <div style="width: 64px; height: 64px; background: linear-gradient(135deg, #3b82f6 0%, #0f172a 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.4);">
-                <!-- 名片 Logo -->
+                <!-- 名片 Logo (白底+橘線) -->
                 <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 512 512" fill="none">
                     <rect x="96" y="156" width="320" height="200" rx="24" fill="white"/>
-                    <rect x="96" y="190" width="320" height="16" fill="#f59e0b"/>
+                    <rect x="96" y="190" width="320" height="16" fill="#f97316"/>
                     <circle cx="170" cy="256" r="30" fill="#cbd5e1"/>
                     <rect x="230" y="240" width="120" height="16" rx="4" fill="#94a3b8"/>
                     <rect x="230" y="270" width="80" height="12" rx="3" fill="#e2e8f0"/>
@@ -413,7 +413,6 @@
                     setView("settings");
                     return;
                 }
-                setTempScans([]);
                 setView("scan");
             };
 
@@ -437,10 +436,11 @@
                 setIsProcessing(true);
                 setError(null);
                 
-                // 修正：將 2.0 設為首選 (速度快、額度好)，2.5 設為備援
+                // 策略修正：把最穩定的 1.5-flash 放回第一位，2.0 備援，移除 2.5
                 const models = [
-                    "gemini-2.0-flash-exp", 
-                    "gemini-2.5-flash-preview-09-2025"
+                    "gemini-1.5-flash",
+                    "gemini-2.0-flash-exp",
+                    "gemini-1.5-flash-8b"
                 ];
 
                 let imageParts = [{
@@ -460,7 +460,7 @@
                         throw new Error("系統忙線中 (429)，請休息 1 分鐘後再試。");
                     }
                     const model = models[index];
-                    setStatusMsg(index === 0 ? "AI 辨識中..." : "嘗試備用線路...");
+                    setStatusMsg("AI 辨識中...");
                     
                     try {
                         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
@@ -477,9 +477,10 @@
                         });
 
                         if (!res.ok) {
-                            if ([404, 429, 500, 503].includes(res.status)) {
+                            // 遇到 400 (Bad Request), 404 (Not Found), 429 (Quota), 5xx 都自動跳下一個
+                            if ([400, 404, 429, 500, 503].includes(res.status)) {
                                 console.warn(`Model ${model} failed (${res.status}), trying next...`);
-                                // 遇到 429 等待 1 秒再切換
+                                // 稍微暫停 1 秒
                                 await new Promise(r => setTimeout(r, 1000));
                                 return await tryModel(index + 1);
                             }
@@ -522,7 +523,7 @@
                     ...resultData, 
                     image: capturedImage, 
                     backImage: backImage, 
-                    avatar: currentAvatar,
+                    avatar: currentAvatar, 
                     additionalImage: additionalImage, 
                     category: resultData.category || "工作" 
                 };
@@ -748,9 +749,7 @@
                                                 {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                {/* 修改：姓名 (text-base 粗體 黑) */}
                                                 <div className="font-bold text-gray-900 text-base truncate">{c.name || "未填寫姓名"}</div>
-                                                {/* 修改：公司 (text-base 灰色) */}
                                                 <div className="text-base text-gray-500 truncate">{c.company || "未填寫公司"}</div>
                                             </div>
                                             <button onClick={(e) => handleDeleteCard(c.id, e)} className="text-gray-300 hover:text-red-500">
@@ -765,7 +764,10 @@
                         {view === "settings" && (
                             <div className="p-4 bg-white rounded-xl shadow-sm space-y-4">
                                 <h3 className="font-bold">API 設定</h3>
-                                <input className="w-full bg-gray-100 p-2 rounded text-sm" placeholder="輸入 API Key" value={tempKey} onChange={e => setTempKey(e.target.value)} />
+                                <div className="text-xs text-gray-400 mb-2">
+                                    目前 Key: {apiKey ? `••••••••${apiKey.slice(-4)}` : '(未設定)'}
+                                </div>
+                                <input className="w-full bg-gray-100 p-2 rounded text-sm" placeholder="輸入新的 API Key" value={tempKey} onChange={e => setTempKey(e.target.value)} />
                                 <button onClick={() => { localStorage.setItem("snapcard_api_key", tempKey); setApiKey(tempKey); setView("home"); }} className="w-full bg-blue-600 text-white p-2 rounded font-bold">儲存</button>
                                 
                                 <div className="border-t pt-4">
@@ -855,7 +857,6 @@
                                                     placeholder={f.label} 
                                                     onChange={e => setResultData({...resultData, [f.key]: e.target.value})} 
                                                 />
-                                                {/* 判斷是否顯示動作按鈕 */}
                                                 {f.type && resultData[f.key] ? (
                                                     <a 
                                                         href={f.type === 'map' ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(resultData[f.key])}` : `${f.type}:${resultData[f.key]}`}
