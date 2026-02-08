@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-title" content="SnapCard">
     <meta name="theme-color" content="#1e3a8a">
     
-    <!-- App Icon: 深藍背景 + 白色名片 + 橘金色線條 -->
+    <!-- App Icon: 深藍背景 + 白色名片 + 金色線條 -->
     <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%231e3a8a'/%3E%3Cstop offset='1' stop-color='%230f172a'/%3E%3C/linearGradient%3E%3Cfilter id='shadow'%3E%3CfeDropShadow dx='0' dy='8' stdDeviation='12' flood-opacity='0.25'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='512' height='512' rx='120' fill='url(%23bg)'/%3E%3C!-- 名片本體 --%3E%3Cg filter='url(%23shadow)'%3E%3Crect x='86' y='156' width='340' height='200' rx='20' fill='white'/%3E%3Crect x='86' y='190' width='340' height='8' fill='%23f59e0b'/%3E%3Ccircle cx='160' cy='256' r='35' fill='%23e2e8f0'/%3E%3Crect x='220' y='236' width='140' height='16' rx='4' fill='%2394a3b8'/%3E%3Crect x='220' y='266' width='100' height='12' rx='3' fill='%23cbd5e1'/%3E%3C/g%3E%3C/svg%3E">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%231e3a8a'/%3E%3Cstop offset='1' stop-color='%230f172a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='120' fill='url(%23bg)'/%3E%3Crect x='86' y='156' width='340' height='200' rx='20' fill='white'/%3E%3Crect x='86' y='190' width='340' height='8' fill='%23f59e0b'/%3E%3Ccircle cx='160' cy='256' r='35' fill='%23e2e8f0'/%3E%3Crect x='220' y='236' width='140' height='16' rx='4' fill='%2394a3b8'/%3E%3Crect x='220' y='266' width='100' height='12' rx='3' fill='%23cbd5e1'/%3E%3C/svg%3E">
 
@@ -35,7 +35,7 @@
             z-index: 10;
             transform: scaleX(1); /* 確保後鏡頭不鏡像 */
         }
-        /* 掃描線動畫 (橘金色) */
+        /* 掃描線動畫 */
         @keyframes scan {
             0% { top: 0%; opacity: 0; }
             50% { opacity: 1; }
@@ -264,7 +264,7 @@
                 const video = videoRef.current;
                 const canvas = document.createElement("canvas");
                 
-                // 1. 計算裁切區域 (所見即所得)
+                // 所見即所得裁切邏輯
                 const videoRatio = video.videoWidth / video.videoHeight;
                 const displayRatio = video.clientWidth / video.clientHeight;
                 
@@ -278,14 +278,13 @@
                     sy = (video.videoHeight - sHeight) / 2;
                 }
 
-                // 2. 計算藍色掃描框在原始影片中的位置
+                // 掃描框位置 (w-3/4 = 75%, 1.6:1 aspect)
                 const frameWidthInSource = sWidth * 0.75; 
                 const frameHeightInSource = frameWidthInSource / 1.6;
 
                 const frameX = sx + (sWidth - frameWidthInSource) / 2;
                 const frameY = sy + (sHeight - frameHeightInSource) / 2;
 
-                // 3. 設定輸出尺寸
                 const MAX_DIM = 1000;
                 let destWidth = frameWidthInSource;
                 let destHeight = frameHeightInSource;
@@ -300,7 +299,6 @@
                 canvas.height = destHeight;
                 
                 const ctx = canvas.getContext('2d');
-                // 僅繪製框內的影像
                 ctx.drawImage(video, frameX, frameY, frameWidthInSource, frameHeightInSource, 0, 0, destWidth, destHeight);
                 
                 onCapture(canvas.toDataURL("image/jpeg", 0.7));
@@ -359,9 +357,6 @@
 
             useEffect(() => {
                 const timer = setTimeout(() => setShowSplash(false), 2000);
-                if (navigator.storage && navigator.storage.persist) {
-                    navigator.storage.persist().then(granted => console.log("Persistence:", granted));
-                }
                 return () => clearTimeout(timer);
             }, []);
 
@@ -370,7 +365,6 @@
                     try {
                         setIsLoadingDB(true);
                         const dbCards = await dbUtils.getAll();
-                        
                         const hasMigrated = localStorage.getItem("snapcard_migrated");
                         const localCardsStr = localStorage.getItem("snapcard_cards");
 
@@ -390,10 +384,8 @@
                                 console.error("Migration error", e);
                             }
                         }
-                        
                         setCards(dbCards.sort((a, b) => b.id - a.id));
                     } catch (err) {
-                        console.error("DB Load Error", err);
                         setError("資料庫讀取失敗");
                     } finally {
                         setIsLoadingDB(false);
@@ -438,10 +430,10 @@
                 setIsProcessing(true);
                 setError(null);
                 
-                // 修正：依序嘗試 1.5-flash (穩定額度高) -> 2.0 (快速) -> 1.5-8b (備援)
+                // 修正：回歸最穩定的 1.5-flash 作為主力，1.5-8b 作為備援
+                // 這些模型免費額度最慷慨
                 const models = [
                     "gemini-1.5-flash",
-                    "gemini-2.0-flash-exp",
                     "gemini-1.5-flash-8b"
                 ];
 
@@ -479,9 +471,10 @@
                         });
 
                         if (!res.ok) {
-                            // 遇到 404, 429, 500, 503 都切換
-                            if ([400, 404, 429, 500, 503].includes(res.status)) {
+                            if ([404, 429, 500, 503].includes(res.status)) {
                                 console.warn(`Model ${model} failed (${res.status}), trying next...`);
+                                // 智慧等待
+                                await new Promise(r => setTimeout(r, 1000));
                                 return await tryModel(index + 1);
                             }
                             const errJson = await res.json().catch(() => ({}));
@@ -749,8 +742,9 @@
                                                 {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" /> : <span className="font-bold text-gray-400">{c.name?.[0]}</span>}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                {/* 修改：姓名與公司字體統一為 text-base */}
+                                                {/* 修改：姓名 (text-base 粗體 黑) */}
                                                 <div className="font-bold text-gray-900 text-base truncate">{c.name || "未填寫姓名"}</div>
+                                                {/* 修改：公司 (text-base 灰色) */}
                                                 <div className="text-base text-gray-500 truncate">{c.company || "未填寫公司"}</div>
                                             </div>
                                             <button onClick={(e) => handleDeleteCard(c.id, e)} className="text-gray-300 hover:text-red-500">
