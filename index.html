@@ -436,9 +436,9 @@
                 setIsProcessing(true);
                 setError(null);
                 
-                // 策略修正：改回最穩定的 1.5-flash，並加入 1.5-pro 作為備援，移除失效的 2.0-exp
+                // 恢復 gemini-2.0-flash-exp 為第一順位
                 const models = [
-                    "gemini-2.0-flash-exp", // 優先使用您指定最穩定的模型
+                    "gemini-2.0-flash-exp",
                     "gemini-1.5-flash",
                     "gemini-1.5-flash-8b",
                     "gemini-1.5-pro"
@@ -479,21 +479,17 @@
 
                         if (!res.ok) {
                             const errJson = await res.json().catch(() => ({}));
+                            const errorMessage = errJson.error?.message || "";
                             
-                            // 檢查是否為 API Key 錯誤，如果是，不重試直接報錯
-                            if (res.status === 400 && errJson.error?.status === "INVALID_ARGUMENT") {
+                            // 嚴格檢查：只有當錯誤訊息明確包含 "API key" 時才視為 Key 錯誤
+                            if (res.status === 400 && (errorMessage.includes("API key") || errorMessage.includes("API_KEY"))) {
                                 throw new Error("API Key 無效，請檢查設定。");
                             }
 
-                            // 遇到 400 (Bad Request), 404 (Not Found), 429 (Quota), 5xx 都自動跳下一個
-                            if ([400, 404, 429, 500, 503].includes(res.status)) {
-                                console.warn(`Model ${model} failed (${res.status}), trying next...`);
-                                // 稍微暫停 1 秒
-                                await new Promise(r => setTimeout(r, 1000));
-                                return await tryModel(index + 1);
-                            }
-                            
-                            throw new Error(errJson.error?.message || `API Error (${res.status})`);
+                            // 其他錯誤 (包含一般 400, 429, 500 等) 都嘗試下一個模型
+                            console.warn(`Model ${model} failed (${res.status}): ${errorMessage}`);
+                            await new Promise(r => setTimeout(r, 1000));
+                            return await tryModel(index + 1);
                         }
 
                         return await res.json();
