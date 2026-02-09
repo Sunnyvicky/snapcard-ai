@@ -438,6 +438,7 @@
                 
                 // 策略修正：改回最穩定的 1.5-flash，並加入 1.5-pro 作為備援，移除失效的 2.0-exp
                 const models = [
+                    "gemini-2.0-flash-exp", // 優先使用您指定最穩定的模型
                     "gemini-1.5-flash",
                     "gemini-1.5-flash-8b",
                     "gemini-1.5-pro"
