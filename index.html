@@ -436,10 +436,9 @@
                 setIsProcessing(true);
                 setError(null);
                 
-                // 策略修正：把最穩定的 1.5-flash 放回第一位，2.0 備援，移除 2.5
+                // 策略修正：優先使用最穩定的 1.5-flash，暫時移除不穩定的 experimental 版本
                 const models = [
                     "gemini-1.5-flash",
-                    "gemini-2.0-flash-exp",
                     "gemini-1.5-flash-8b"
                 ];
 
@@ -457,10 +456,10 @@
 
                 const tryModel = async (index) => {
                     if (index >= models.length) {
-                        throw new Error("系統忙線中 (429)，請休息 1 分鐘後再試。");
+                        throw new Error("所有模型忙線中，請檢查 API Key 額度或稍後再試。");
                     }
                     const model = models[index];
-                    setStatusMsg("AI 辨識中...");
+                    setStatusMsg(`AI 辨識中 (${index + 1}/${models.length})...`);
                     
                     try {
                         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
@@ -476,20 +475,37 @@
                             })
                         });
 
+                        // 特別處理 API Key 或額度錯誤
+                        if (res.status === 400 || res.status === 401 || res.status === 403) {
+                            throw new Error("API Key 無效或權限不足，請至設定頁面檢查 Key。");
+                        }
+
+                        if (res.status === 429) {
+                            // 額度滿了，如果有下一個模型就試試看，沒有就報錯
+                            console.warn(`Model ${model} Quota Exceeded (429)`);
+                            if (index === models.length - 1) {
+                                throw new Error("API 使用額度已達上限 (429)，請稍後再試。");
+                            }
+                            // 暫停一下再試下一個
+                            await new Promise(r => setTimeout(r, 1000));
+                            return await tryModel(index + 1);
+                        }
+
                         if (!res.ok) {
-                            // 遇到 400 (Bad Request), 404 (Not Found), 429 (Quota), 5xx 都自動跳下一個
-                            if ([400, 404, 429, 500, 503].includes(res.status)) {
-                                console.warn(`Model ${model} failed (${res.status}), trying next...`);
-                                // 稍微暫停 1 秒
-                                await new Promise(r => setTimeout(r, 1000));
+                            const errJson = await res.json().catch(() => ({}));
+                            // 5xx 錯誤通常是伺服器暫時問題，嘗試下一個模型
+                            if (res.status >= 500) {
+                                console.warn(`Model ${model} Server Error (${res.status})`);
                                 return await tryModel(index + 1);
                             }
-                            const errJson = await res.json().catch(() => ({}));
                             throw new Error(errJson.error?.message || `API Error (${res.status})`);
                         }
 
                         return await res.json();
                     } catch (e) {
+                        // 如果是我們自己拋出的致命錯誤 (Key 無效)，直接停止嘗試
+                        if (e.message.includes("Key")) throw e;
+                        // 否則嘗試下一個
                         return await tryModel(index + 1);
                     }
                 };
@@ -510,7 +526,8 @@
                     setCurrentCardId(null);
                     setView("result");
                 } catch (e) {
-                    setError(e.message);
+                    console.error(e);
+                    setError(e.message || "辨識失敗，請重試");
                     setView("home");
                 } finally {
                     setIsProcessing(false);
@@ -701,7 +718,7 @@
                     </header>
 
                     <main className="flex-1 overflow-y-auto p-4 relative">
-                        {error && <div className="bg-red-100 text-red-600 p-3 rounded-lg mb-4 text-xs font-bold">{error}</div>}
+                        {error && <div className="bg-red-100 text-red-600 p-3 rounded-lg mb-4 text-xs font-bold whitespace-pre-line shadow-sm border border-red-200">{error}</div>}
 
                         {view === "home" && (
                             <div className="space-y-4">
@@ -766,6 +783,8 @@
                                 <h3 className="font-bold">API 設定</h3>
                                 <div className="text-xs text-gray-400 mb-2">
                                     目前 Key: {apiKey ? `••••••••${apiKey.slice(-4)}` : '(未設定)'}
+                                    <br/><br/>
+                                    請至 <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-blue-500 underline">Google AI Studio</a> 申請免費 API Key。
                                 </div>
                                 <input className="w-full bg-gray-100 p-2 rounded text-sm" placeholder="輸入新的 API Key" value={tempKey} onChange={e => setTempKey(e.target.value)} />
                                 <button onClick={() => { localStorage.setItem("snapcard_api_key", tempKey); setApiKey(tempKey); setView("home"); }} className="w-full bg-blue-600 text-white p-2 rounded font-bold">儲存</button>
