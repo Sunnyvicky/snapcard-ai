@@ -38,7 +38,6 @@
             background: #f97316; box-shadow: 0 0 10px #f97316;
             animation: scan 2s linear infinite;
         }
-        /* 原生 CSS 啟動畫面，確保 JS 載入前有東西看 */
         .splash-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: #f8fafc; display: flex; flex-direction: column;
@@ -48,7 +47,6 @@
 </head>
 <body>
     <div id="root">
-        <!-- 初始載入時的靜態內容 -->
         <div class="splash-screen">
             <div style="width: 64px; height: 64px; background: linear-gradient(135deg, #3b82f6 0%, #0f172a 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.4);">
                 <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 512 512" fill="none">
@@ -64,38 +62,28 @@
         </div>
     </div>
 
-    <!-- 全域錯誤攔截，防止白畫面 -->
+    <!-- 錯誤攔截 -->
     <script>
-        window.onerror = function(message, source, lineno, colno, error) {
-            console.error(error);
+        window.onerror = function(message) {
             const root = document.getElementById('root');
-            if (root) {
-                root.innerHTML = '<div style="padding:20px; text-align:center; color:red;"><h3>App 啟動失敗</h3><p>' + message + '</p><button onclick="location.reload()" style="padding:10px; background:#eee; border:1px solid #ccc; border-radius:5px; margin-top:10px;">重新整理</button></div>';
-            }
+            if (root) root.innerHTML = '<div style="padding:20px;text-align:center;color:red;margin-top:50px;"><h3>啟動發生錯誤</h3><p>'+message+'</p><button onclick="localStorage.clear();location.reload()" style="padding:10px;margin-top:10px;">重置 App</button></div>';
         };
     </script>
 
     <script type="text/babel">
         const { useState, useRef, useEffect, useMemo, Component } = React;
 
-        // --- 安全的 LocalStorage 存取 (防止隱私模式崩潰) ---
+        // --- 安全的 LocalStorage ---
         const safeLocalStorage = {
-            getItem: (key) => {
-                try { return localStorage.getItem(key); } catch (e) { console.warn('LS Access Denied'); return null; }
-            },
-            setItem: (key, value) => {
-                try { localStorage.setItem(key, value); } catch (e) { console.warn('LS Access Denied'); }
-            },
-            removeItem: (key) => {
-                try { localStorage.removeItem(key); } catch (e) { }
-            }
+            getItem: (key) => { try { return localStorage.getItem(key); } catch (e) { return null; } },
+            setItem: (key, value) => { try { localStorage.setItem(key, value); } catch (e) { } },
+            removeItem: (key) => { try { localStorage.removeItem(key); } catch (e) { } }
         };
 
         // --- IndexedDB ---
         const DB_NAME = 'SnapCardDB';
         const STORE_NAME = 'cards';
         const DB_VERSION = 1;
-
         const dbUtils = {
             open: () => new Promise((resolve, reject) => {
                 try {
@@ -106,9 +94,7 @@
                     };
                     request.onsuccess = (e) => resolve(e.target.result);
                     request.onerror = (e) => reject(e.target.error);
-                } catch (e) {
-                    reject(e); // 攔截 iframe 禁止 IndexedDB 的情況
-                }
+                } catch(e) { reject(e); }
             }),
             getAll: async () => {
                 const db = await dbUtils.open();
@@ -148,20 +134,13 @@
             }
         };
 
-        // --- 錯誤邊界 (防止 React 渲染錯誤導致白畫面) ---
+        // --- Error Boundary ---
         class ErrorBoundary extends Component {
-            constructor(props) { super(props); this.state = { hasError: false, error: null }; }
-            static getDerivedStateFromError(error) { return { hasError: true, error }; }
+            constructor(props) { super(props); this.state = { hasError: false }; }
+            static getDerivedStateFromError(error) { return { hasError: true }; }
             render() {
                 if (this.state.hasError) {
-                    return (
-                        <div className="h-screen flex flex-col items-center justify-center p-6 text-center bg-gray-50">
-                            <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4">!</div>
-                            <h2 className="text-xl font-bold text-gray-800 mb-2">發生預期外的錯誤</h2>
-                            <p className="text-sm text-gray-500 mb-4 break-all">{this.state.error?.message}</p>
-                            <button onClick={() => { safeLocalStorage.removeItem('snapcard_api_key'); window.location.reload(); }} className="bg-red-500 text-white px-6 py-2 rounded-full font-bold shadow-lg">重設 App</button>
-                        </div>
-                    );
+                    return <div className="h-screen flex items-center justify-center p-6 text-center text-red-600">發生未預期的錯誤，請重新整理。</div>;
                 }
                 return this.props.children;
             }
@@ -171,12 +150,11 @@
             const ref = useRef(null);
             useEffect(() => {
                 if (!ref.current || !window.lucide) return;
-                const container = ref.current;
-                container.innerHTML = '';
+                ref.current.innerHTML = '';
                 const i = document.createElement('i');
                 i.setAttribute('data-lucide', name);
-                container.appendChild(i);
-                window.lucide.createIcons({ root: container, nameAttr: 'data-lucide', attrs: { width: size, height: size, class: className } });
+                ref.current.appendChild(i);
+                window.lucide.createIcons({ root: ref.current, nameAttr: 'data-lucide', attrs: { width: size, height: size, class: className } });
             }, [name, size, className]);
             return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center' }}></span>;
         };
@@ -268,34 +246,23 @@
             const [view, setView] = useState("home");
             const [cards, setCards] = useState([]);
             const [isLoadingDB, setIsLoadingDB] = useState(true);
-            
             const [capturedImage, setCapturedImage] = useState(null); 
             const [backImage, setBackImage] = useState(null); 
             const [currentAvatar, setCurrentAvatar] = useState(null);
             const [additionalImage, setAdditionalImage] = useState(null);
-            
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState({});
             const [currentCardId, setCurrentCardId] = useState(null);
             const [filterCategory, setFilterCategory] = useState("全部");
-            
-            // 安全讀取 LocalStorage
             const [apiKey, setApiKey] = useState(() => safeLocalStorage.getItem("snapcard_api_key") || "");
-            
             const [error, setError] = useState(null);
             const [statusMsg, setStatusMsg] = useState("AI 辨識中...");
             const [searchQuery, setSearchQuery] = useState(""); 
             const [testStatus, setTestStatus] = useState("idle"); 
             const [testMessage, setTestMessage] = useState("");
 
-            // 固定 input name，避免重新渲染導致失焦
-            const apiKeyInputName = useMemo(() => `snapcard_api_key_${Math.random().toString(36).slice(2)}`, []);
-
             useEffect(() => {
                 const timer = setTimeout(() => setShowSplash(false), 2000);
-                if (navigator.storage && navigator.storage.persist) {
-                    navigator.storage.persist().then(granted => console.log("Persistence:", granted));
-                }
                 return () => clearTimeout(timer);
             }, []);
 
@@ -304,167 +271,90 @@
                     try {
                         setIsLoadingDB(true);
                         const dbCards = await dbUtils.getAll();
-                        
                         const hasMigrated = safeLocalStorage.getItem("snapcard_migrated");
                         const localCardsStr = safeLocalStorage.getItem("snapcard_cards");
-
                         if (localCardsStr && !hasMigrated) {
                             try {
                                 const localCards = JSON.parse(localCardsStr);
                                 if (localCards.length > 0) {
                                     for (const card of localCards) {
-                                        if (!dbCards.find(c => c.id === card.id)) {
-                                            await dbUtils.put(card);
-                                            dbCards.push(card);
-                                        }
+                                        if (!dbCards.find(c => c.id === card.id)) { await dbUtils.put(card); dbCards.push(card); }
                                     }
                                     safeLocalStorage.setItem("snapcard_migrated", "true");
                                 }
-                            } catch (e) {
-                                console.error("Migration error", e);
-                            }
+                            } catch (e) { console.error("Migration error", e); }
                         }
-                        
                         setCards(dbCards.sort((a, b) => b.id - a.id));
-                    } catch (err) {
-                        console.error("DB Load Error", err);
-                        // 資料庫失敗不應該阻擋 App 運作，只是沒資料
-                        setError("無法讀取離線資料庫，請檢查瀏覽器隱私設定");
-                    } finally {
-                        setIsLoadingDB(false);
-                    }
+                    } catch (err) { setError("資料庫讀取失敗"); } 
+                    finally { setIsLoadingDB(false); }
                 };
                 loadCards();
             }, []);
 
             useEffect(() => {
-                const timer = setTimeout(() => {
-                    if (window.lucide) window.lucide.createIcons();
-                }, 50);
+                const timer = setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 50);
                 return () => clearTimeout(timer);
             }, [view, cards.length, resultData, additionalImage, backImage, currentAvatar, filterCategory, showSplash, testStatus]);
 
             const startScanFlow = () => {
-                if (!apiKey) {
-                    setView("settings");
-                    return;
-                }
+                if (!apiKey) { setView("settings"); return; }
                 setView("scan");
             };
 
             const handleManualAdd = () => {
                 setResultData({ category: "工作" });
-                setCapturedImage(null);
-                setBackImage(null);
-                setCurrentAvatar(null);
-                setAdditionalImage(null);
-                setCurrentCardId(null);
+                setCapturedImage(null); setBackImage(null); setCurrentAvatar(null); setAdditionalImage(null); setCurrentCardId(null);
                 setView("result");
             };
 
             const handleScanCapture = (base64) => {
-                setCapturedImage(base64);
-                setView("home"); 
-                analyze(base64);
+                setCapturedImage(base64); setView("home"); analyze(base64);
             };
 
             const testConnection = async () => {
-                if (!apiKey) {
-                    setTestStatus("error");
-                    setTestMessage("請先輸入 API Key");
-                    return;
-                }
-                setTestStatus("testing");
-                setTestMessage("連線測試中...");
-                
+                if (!apiKey) { setTestStatus("error"); setTestMessage("請先輸入 API Key"); return; }
+                setTestStatus("testing"); setTestMessage("連線測試中...");
                 try {
                     const cleanKey = apiKey.trim();
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cleanKey}`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: "Hello" }] }]
-                        })
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: "Hello" }] }] })
                     });
-
                     const data = await res.json();
-                    
-                    if (!res.ok) {
-                        const msg = data.error?.message || res.statusText || "Unknown Error";
-                        throw new Error(`${res.status}: ${msg}`);
-                    }
-
-                    setTestStatus("success");
-                    setTestMessage("API Key 有效！連線成功。");
-                } catch (e) {
-                    setTestStatus("error");
-                    setTestMessage(`測試失敗: ${e.message}`);
-                }
+                    if (!res.ok) { const msg = data.error?.message || res.statusText || "Unknown Error"; throw new Error(`${res.status}: ${msg}`); }
+                    setTestStatus("success"); setTestMessage("API Key 有效！連線成功。");
+                } catch (e) { setTestStatus("error"); setTestMessage(`測試失敗: ${e.message}`); }
             };
 
             const analyze = async (base64) => {
-                setIsProcessing(true);
-                setError(null);
-                
-                // 順序：1.5-flash (穩定) -> 2.0 (備援)
-                const models = [
-                    "gemini-1.5-flash",
-                    "gemini-2.0-flash-exp",
-                    "gemini-1.5-flash-8b",
-                    "gemini-1.5-pro"
-                ];
-
-                let imageParts = [{
-                    inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] }
-                }];
-
+                setIsProcessing(true); setError(null);
+                const models = ["gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-1.5-flash-8b", "gemini-1.5-pro"];
+                let imageParts = [{ inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }];
                 const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作","note":""}。
-                重點規則：
-                1. 請將電話區分為 mobile(手機), tel(市話), fax(傳真)。
-                2. company欄位請合併中文及英文名稱。
-                3. category從[工作,家人,同學,朋友]選。
-                4. note欄位保留空白。
-                無Markdown。`;
-
+                重點規則：1. 請將電話區分為 mobile(手機), tel(市話), fax(傳真)。 2. company欄位請合併中文及英文名稱。 3. category從[工作,家人,同學,朋友]選。 4. note欄位保留空白。 無Markdown。`;
                 let lastErrorMessage = "未知錯誤";
 
                 const tryModel = async (index) => {
-                    if (index >= models.length) {
-                        throw new Error(`分析失敗，請檢查 API Key 或網路。\n最後錯誤: ${lastErrorMessage}`);
-                    }
+                    if (index >= models.length) { throw new Error(`分析失敗，請檢查 API Key 或網路。\n最後錯誤: ${lastErrorMessage}`); }
                     const model = models[index];
                     setStatusMsg(`AI 辨識中... (嘗試 ${model})`);
-                    
                     try {
                         const cleanKey = apiKey.trim();
                         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                contents: [{ 
-                                    parts: [
-                                        { text: promptText },
-                                        ...imageParts
-                                    ] 
-                                }]
-                            })
+                            method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ contents: [{ parts: [{ text: promptText }, ...imageParts] }] })
                         });
-
                         if (!res.ok) {
                             const errJson = await res.json().catch(() => ({}));
                             const msg = errJson.error?.message || errJson.error?.status || res.statusText;
                             lastErrorMessage = `${res.status} ${msg}`;
-                            
-                            // 只有明確是 API Key 錯誤時才停止
                             if (res.status === 400 && (msg.includes("API key") || msg.includes("API_KEY") || msg.includes("INVALID_ARGUMENT"))) {
                                 throw new Error("API Key 無效，請檢查設定。");
                             }
-
                             console.warn(`Model ${model} failed (${res.status}): ${msg}`);
                             await new Promise(r => setTimeout(r, 1000));
                             return await tryModel(index + 1);
                         }
-
                         return await res.json();
                     } catch (e) {
                         if (e.message.includes("API Key")) throw e;
@@ -475,95 +365,44 @@
 
                 try {
                     const json = await tryModel(0);
-                    
                     let text = json.candidates[0].content.parts[0].text;
                     text = text.replace(/```json|```/g, '').trim();
                     const start = text.indexOf('{'), end = text.lastIndexOf('}');
                     const data = JSON.parse(text.substring(start, end + 1));
-                    
                     setResultData(data || { category: "工作" });
-                    
-                    setBackImage(null);
-                    setAdditionalImage(null);
-                    setCurrentAvatar(null);
-                    setCurrentCardId(null);
+                    setBackImage(null); setAdditionalImage(null); setCurrentAvatar(null); setCurrentCardId(null);
                     setView("result");
-                } catch (e) {
-                    setError(e.message);
-                    setView("home");
-                } finally {
-                    setIsProcessing(false);
-                }
+                } catch (e) { setError(e.message); setView("home"); } 
+                finally { setIsProcessing(false); }
             };
 
             const saveCard = async () => {
-                const newData = { 
-                    id: currentCardId || Date.now(), 
-                    ...resultData, 
-                    image: capturedImage, 
-                    backImage: backImage, 
-                    avatar: currentAvatar, 
-                    additionalImage: additionalImage, 
-                    category: resultData.category || "工作" 
-                };
-                
+                const newData = { id: currentCardId || Date.now(), ...resultData, image: capturedImage, backImage: backImage, avatar: currentAvatar, additionalImage: additionalImage, category: resultData.category || "工作" };
                 try {
                     await dbUtils.put(newData);
-                    
-                    if (currentCardId) {
-                        setCards(prev => prev.map(c => c.id === currentCardId ? newData : c));
-                    } else {
-                        setCards(prev => [newData, ...prev]);
-                    }
+                    if (currentCardId) setCards(prev => prev.map(c => c.id === currentCardId ? newData : c));
+                    else setCards(prev => [newData, ...prev]);
                     setView("home");
-                } catch (e) {
-                    alert("儲存失敗: " + e.message);
-                }
+                } catch (e) { alert("儲存失敗: " + e.message); }
             };
 
             const handleDeleteCard = async (id, e) => {
                 e.stopPropagation();
                 if(confirm("確定要刪除這張名片嗎？")) {
-                    try {
-                        await dbUtils.delete(id);
-                        setCards(prev => prev.filter(c => c.id !== id));
-                    } catch (e) {
-                        alert("刪除失敗");
-                    }
+                    try { await dbUtils.delete(id); setCards(prev => prev.filter(c => c.id !== id)); } catch (e) { alert("刪除失敗"); }
                 }
             };
 
-            const handleAvatarUpload = async (e) => {
+            const handleImageUpload = async (e, setter) => {
                 if (e.target.files[0]) {
-                    try {
-                        const base64 = await compressImage(e.target.files[0]);
-                        setCurrentAvatar(base64);
-                    } catch(err) { alert("圖片處理失敗"); }
-                }
-            };
-
-            const handleSecondImageUpload = async (e) => {
-                if (e.target.files[0]) {
-                    try {
-                        const base64 = await compressImage(e.target.files[0]);
-                        setAdditionalImage(base64);
-                    } catch(err) { alert("圖片處理失敗"); }
+                    try { const base64 = await compressImage(e.target.files[0]); setter(base64); } catch(err) { alert("圖片處理失敗"); }
                 }
             };
 
             const viewSavedCard = (card) => {
                 const data = {...card};
-                if (data.phone && !data.mobile && !data.tel) {
-                    if (data.phone.startsWith("09")) data.mobile = data.phone;
-                    else data.tel = data.phone;
-                }
-
-                setResultData(data);
-                setCapturedImage(card.image);
-                setBackImage(card.backImage || null);
-                setCurrentAvatar(card.avatar);
-                setAdditionalImage(card.additionalImage || null); 
-                setCurrentCardId(card.id);
+                if (data.phone && !data.mobile && !data.tel) { if (data.phone.startsWith("09")) data.mobile = data.phone; else data.tel = data.phone; }
+                setResultData(data); setCapturedImage(card.image); setBackImage(card.backImage || null); setCurrentAvatar(card.avatar); setAdditionalImage(card.additionalImage || null); setCurrentCardId(card.id);
                 setView("result");
             };
 
@@ -571,10 +410,7 @@
                 let result = filterCategory === "全部" ? cards : cards.filter(c => c.category === filterCategory);
                 if (searchQuery) {
                     const q = searchQuery.toLowerCase();
-                    result = result.filter(c => 
-                        (c.name && c.name.toLowerCase().includes(q)) || 
-                        (c.company && c.company.toLowerCase().includes(q))
-                    );
+                    result = result.filter(c => (c.name && c.name.toLowerCase().includes(q)) || (c.company && c.company.toLowerCase().includes(q)));
                 }
                 return result.sort((a, b) => {
                     const companyA = (a.company || "").toLowerCase();
@@ -584,69 +420,40 @@
             }, [cards, filterCategory, searchQuery]);
 
             const exportData = () => {
-                if (cards.length === 0) {
-                    alert("目前沒有名片資料可供匯出");
-                    return;
-                }
+                if (cards.length === 0) { alert("無資料可匯出"); return; }
                 const dataStr = JSON.stringify(cards, null, 2);
                 const blob = new Blob([dataStr], { type: "application/octet-stream" });
                 const url = URL.createObjectURL(blob);
-                
-                const exportFileDefaultName = `snapcard_backup_${new Date().toISOString().slice(0,10)}.json`;
-                
-                const linkElement = document.createElement('a');
-                linkElement.style.display = "none";
-                linkElement.href = url;
-                linkElement.download = exportFileDefaultName;
-                
-                document.body.appendChild(linkElement);
-                linkElement.click();
-                
-                setTimeout(() => {
-                    document.body.removeChild(linkElement);
-                    window.URL.revokeObjectURL(url);
-                    alert(`已觸發下載，請檢查您的下載資料夾。`);
-                }, 100);
+                const link = document.createElement('a');
+                link.href = url; link.download = `snapcard_backup_${new Date().toISOString().slice(0,10)}.json`;
+                document.body.appendChild(link); link.click();
+                setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
             };
 
             const importData = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-
-                const fileReader = new FileReader();
-                fileReader.readAsText(file, "UTF-8");
-                fileReader.onload = async e => {
+                const reader = new FileReader();
+                reader.readAsText(file, "UTF-8");
+                reader.onload = async e => {
                     try {
                         const importedCards = JSON.parse(e.target.result);
                         if (Array.isArray(importedCards)) {
-                            if (confirm(`確定匯入 ${importedCards.length} 筆名片資料？`)) {
-                                for (const card of importedCards) {
-                                    await dbUtils.put(card);
-                                }
+                            if (confirm(`匯入 ${importedCards.length} 筆資料？`)) {
+                                for (const card of importedCards) await dbUtils.put(card);
                                 const allCards = await dbUtils.getAll();
                                 setCards(allCards.sort((a, b) => b.id - a.id));
                                 alert("匯入成功！");
                             }
-                        } else {
-                            alert("檔案格式錯誤");
-                        }
-                    } catch (err) {
-                        alert("讀取備份檔失敗");
-                    }
+                        } else alert("格式錯誤");
+                    } catch (err) { alert("讀取失敗"); }
                 };
                 e.target.value = '';
             };
 
             const clearAllData = async () => {
                 if(confirm("警告：這將刪除所有資料。確定嗎？")) {
-                    try {
-                        await dbUtils.clear();
-                        setCards([]);
-                        safeLocalStorage.removeItem("snapcard_cards"); 
-                        alert("資料已清空");
-                    } catch (e) {
-                        alert("清除失敗");
-                    }
+                    try { await dbUtils.clear(); setCards([]); safeLocalStorage.removeItem("snapcard_cards"); alert("已清空"); } catch (e) { alert("清除失敗"); }
                 }
             };
 
@@ -687,37 +494,18 @@
                                         👉 請先設定 API Key
                                     </div>
                                 )}
-                                
                                 <div className="relative">
-                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                                        <Icon name="search" size={16} />
-                                    </div>
-                                    <input 
-                                        type="text" 
-                                        placeholder="搜尋姓名或公司..." 
-                                        className="w-full bg-white border border-gray-100 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 shadow-sm"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                    />
-                                    {searchQuery && (
-                                        <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 p-1">
-                                            <Icon name="x" size={14} />
-                                        </button>
-                                    )}
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Icon name="search" size={16} /></div>
+                                    <input type="text" placeholder="搜尋姓名或公司..." className="w-full bg-white border border-gray-100 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 shadow-sm" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                                    {searchQuery && <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 p-1"><Icon name="x" size={14} /></button>}
                                 </div>
-
                                 <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar">
                                     {["全部", "工作", "家人", "同學", "朋友"].map(cat => (
-                                        <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${filterCategory === cat ? "bg-blue-600 text-white shadow-sm" : "bg-white text-gray-500 border border-gray-100"}`}>
-                                            {cat}
-                                        </button>
+                                        <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${filterCategory === cat ? "bg-blue-600 text-white shadow-sm" : "bg-white text-gray-500 border border-gray-100"}`}>{cat}</button>
                                     ))}
                                 </div>
-
                                 {filteredCards.length === 0 ? (
-                                    <div className="text-center py-20 text-gray-400 text-sm">
-                                        {cards.length === 0 ? "暫無名片" : "找不到符合的名片"}
-                                    </div>
+                                    <div className="text-center py-20 text-gray-400 text-sm">{cards.length === 0 ? "暫無名片" : "找不到符合的名片"}</div>
                                 ) : (
                                     filteredCards.map(c => (
                                         <div key={c.id} onClick={() => viewSavedCard(c)} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 active:scale-[0.98] transition-transform">
@@ -739,74 +527,29 @@
                         {view === "settings" && (
                             <div className="space-y-6">
                                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                    <h3 className="font-bold text-lg mb-4 text-gray-800 flex items-center gap-2">
-                                        <Icon name="key" className="text-blue-500" /> API 設定
-                                    </h3>
+                                    <h3 className="font-bold text-lg mb-4 text-gray-800 flex items-center gap-2"><Icon name="key" className="text-blue-500" /> API 設定</h3>
                                     <p className="text-xs text-gray-500 mb-2">請輸入您的 Google Gemini API Key</p>
-                                    
-                                    {/* 隱藏欄位欺騙法：防止瀏覽器自動填入密碼 */}
                                     <div style={{opacity: 0, position: 'absolute', top: 0, left: 0, height: 0, width: 0, zIndex: -1}}>
                                         <input type="text" name="fake_username" tabIndex="-1" />
                                         <input type="password" name="fake_password" tabIndex="-1" />
                                     </div>
-                                    
-                                    <input 
-                                        type="password" 
-                                        autoComplete="off" 
-                                        data-lpignore="true"
-                                        name={apiKeyInputName}
-                                        value={apiKey}
-                                        onChange={(e) => {
-                                            setApiKey(e.target.value);
-                                            safeLocalStorage.setItem("snapcard_api_key", e.target.value);
-                                        }}
-                                        className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm mb-3 focus:ring-2 focus:ring-blue-100 focus:outline-none"
-                                        placeholder="AIzaSy..."
-                                    />
-                                    
+                                    <input type="password" autoComplete="new-password" name="gemini_api_key_field" value={apiKey} onChange={(e) => { setApiKey(e.target.value); safeLocalStorage.setItem("snapcard_api_key", e.target.value); }} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm mb-3 focus:ring-2 focus:ring-blue-100 focus:outline-none" placeholder="AIzaSy..." />
                                     <div className="flex gap-2 mb-2">
-                                        <button onClick={testConnection} disabled={testStatus === "testing"} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${testStatus === "success" ? "bg-green-100 text-green-700" : testStatus === "error" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}>
-                                            {testStatus === "testing" ? "測試中..." : testStatus === "success" ? "測試成功" : "測試連線"}
-                                        </button>
-                                        <button onClick={() => window.open("https://aistudio.google.com/app/apikey", "_blank")} className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors">
-                                            取得 Key
-                                        </button>
+                                        <button onClick={testConnection} disabled={testStatus === "testing"} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${testStatus === "success" ? "bg-green-100 text-green-700" : testStatus === "error" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}>{testStatus === "testing" ? "測試中..." : testStatus === "success" ? "測試成功" : "測試連線"}</button>
+                                        <button onClick={() => window.open("https://aistudio.google.com/app/apikey", "_blank")} className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors">取得 Key</button>
                                     </div>
-                                    {testMessage && (
-                                        <div className={`text-xs p-2 rounded ${testStatus === 'success' ? 'text-green-600 bg-green-50' : testStatus === 'error' ? 'text-red-600 bg-red-50' : 'text-gray-500'}`}>
-                                            {testMessage}
-                                        </div>
-                                    )}
+                                    {testMessage && <div className={`text-xs p-2 rounded ${testStatus === 'success' ? 'text-green-600 bg-green-50' : testStatus === 'error' ? 'text-red-600 bg-red-50' : 'text-gray-500'}`}>{testMessage}</div>}
                                 </div>
-
                                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                    <h3 className="font-bold text-lg mb-4 text-gray-800 flex items-center gap-2">
-                                        <Icon name="database" className="text-purple-500" /> 資料管理
-                                    </h3>
+                                    <h3 className="font-bold text-lg mb-4 text-gray-800 flex items-center gap-2"><Icon name="database" className="text-purple-500" /> 資料管理</h3>
                                     <div className="space-y-3">
-                                        <button onClick={exportData} className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-xl text-gray-700 font-medium hover:bg-gray-100 transition-colors">
-                                            <span>匯出備份 (JSON)</span>
-                                            <Icon name="upload" size={18} /> 
-                                        </button>
-                                        <label className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-xl text-gray-700 font-medium hover:bg-gray-100 transition-colors cursor-pointer">
-                                            <span>匯入備份</span>
-                                            <Icon name="download" size={18} />
-                                            <input type="file" accept=".json" onChange={importData} className="hidden" />
-                                        </label>
-                                        <button onClick={clearAllData} className="w-full flex items-center justify-between p-3 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-colors">
-                                            <span>清空所有資料</span>
-                                            <Icon name="trash" size={18} />
-                                        </button>
+                                        <button onClick={exportData} className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-xl text-gray-700 font-medium hover:bg-gray-100 transition-colors"><span>匯出備份 (JSON)</span><Icon name="upload" size={18} /></button>
+                                        <label className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-xl text-gray-700 font-medium hover:bg-gray-100 transition-colors cursor-pointer"><span>匯入備份</span><Icon name="download" size={18} /><input type="file" accept=".json" onChange={importData} className="hidden" /></label>
+                                        <button onClick={clearAllData} className="w-full flex items-center justify-between p-3 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-colors"><span>清空所有資料</span><Icon name="trash" size={18} /></button>
                                     </div>
                                 </div>
-                                
-                                <div className="text-center text-xs text-gray-400 mt-8">
-                                    AA Version 3.0 • Local Storage Only
-                                </div>
-
-                                <button onClick={() => setView("home")} className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4">
-                                    返回
-                                </button>
+                                <div className="text-center text-xs text-gray-400 mt-8">AA Version Stable • Local Storage Only</div>
+                                <button onClick={() => setView("home")} className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4">返回</button>
                             </div>
                         )}
 
@@ -815,38 +558,21 @@
                         {view === "result" && (
                             <div className="bg-white min-h-full rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
                                 <div className="bg-gray-100 relative group">
-                                    {capturedImage ? (
-                                        <img src={capturedImage} className="w-full object-contain max-h-64" />
-                                    ) : (
-                                        <div className="h-40 flex items-center justify-center text-gray-400">無名片影像</div>
-                                    )}
-                                    <button onClick={() => document.getElementById('retake-input').click()} className="absolute bottom-2 right-2 bg-black/50 text-white p-2 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Icon name="camera" size={16}/>
-                                    </button>
+                                    {capturedImage ? <img src={capturedImage} className="w-full object-contain max-h-64" /> : <div className="h-40 flex items-center justify-center text-gray-400">無名片影像</div>}
+                                    <button onClick={() => document.getElementById('retake-input').click()} className="absolute bottom-2 right-2 bg-black/50 text-white p-2 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity"><Icon name="camera" size={16}/></button>
                                     <input id="retake-input" type="file" accept="image/*" className="hidden" onChange={(e)=>handleImageUpload(e, setCapturedImage)}/>
                                 </div>
-
                                 <div className="p-5 flex-1 space-y-4">
                                     <div className="flex gap-4">
                                         <div className="relative w-20 h-20 flex-shrink-0">
-                                            {currentAvatar ? (
-                                                <img src={currentAvatar} className="w-20 h-20 rounded-xl object-cover border border-gray-200" />
-                                            ) : (
-                                                <div className="w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-gray-300">
-                                                    <Icon name="user" size={32} />
-                                                </div>
-                                            )}
-                                            <label className="absolute -bottom-2 -right-2 bg-white shadow-md p-1.5 rounded-full cursor-pointer border border-gray-100">
-                                                <Icon name="edit-2" size={12} className="text-blue-500" />
-                                                <input type="file" accept="image/*" className="hidden" onChange={(e)=>handleImageUpload(e, setCurrentAvatar)} />
-                                            </label>
+                                            {currentAvatar ? <img src={currentAvatar} className="w-20 h-20 rounded-xl object-cover border border-gray-200" /> : <div className="w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-gray-300"><Icon name="user" size={32} /></div>}
+                                            <label className="absolute -bottom-2 -right-2 bg-white shadow-md p-1.5 rounded-full cursor-pointer border border-gray-100"><Icon name="edit-2" size={12} className="text-blue-500" /><input type="file" accept="image/*" className="hidden" onChange={(e)=>handleImageUpload(e, setCurrentAvatar)} /></label>
                                         </div>
                                         <div className="flex-1 space-y-2">
                                             <input type="text" value={resultData.name||""} onChange={(e)=>setResultData({...resultData, name:e.target.value})} placeholder="姓名" className="w-full text-xl font-black bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none placeholder-gray-300" />
                                             <input type="text" value={resultData.jobTitle||""} onChange={(e)=>setResultData({...resultData, jobTitle:e.target.value})} placeholder="職稱" className="w-full text-sm text-gray-500 bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none placeholder-gray-300" />
                                         </div>
                                     </div>
-
                                     <div className="space-y-3 pt-2">
                                         {[
                                             { icon: "building", key: "company", placeholder: "公司名稱" },
@@ -858,35 +584,18 @@
                                         ].map(field => {
                                             const isActionable = (field.key === 'mobile' || field.key === 'tel' || field.key === 'email') && resultData[field.key];
                                             const href = field.key === 'email' ? `mailto:${resultData[field.key]}` : `tel:${resultData[field.key]}`;
-                                            
                                             return (
                                                 <div key={field.key} className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl">
-                                                    {isActionable ? (
-                                                        <a href={href} className="text-blue-500 active:text-blue-700">
-                                                            <Icon name={field.icon} size={18} />
-                                                        </a>
-                                                    ) : (
-                                                        <Icon name={field.icon} className="text-gray-400" size={18} />
-                                                    )}
-                                                    <input 
-                                                        type="text" 
-                                                        value={resultData[field.key]||""} 
-                                                        onChange={(e)=>setResultData({...resultData, [field.key]:e.target.value})}
-                                                        placeholder={field.placeholder}
-                                                        className="flex-1 bg-transparent text-sm text-gray-700 focus:outline-none placeholder-gray-300"
-                                                    />
+                                                    {isActionable ? <a href={href} className="text-blue-500 active:text-blue-700"><Icon name={field.icon} size={18} /></a> : <Icon name={field.icon} className="text-gray-400" size={18} />}
+                                                    <input type="text" value={resultData[field.key]||""} onChange={(e)=>setResultData({...resultData, [field.key]:e.target.value})} placeholder={field.placeholder} className="flex-1 bg-transparent text-sm text-gray-700 focus:outline-none placeholder-gray-300" />
                                                 </div>
                                             );
                                         })}
-
                                         <div className="flex gap-2 py-2">
                                             {["工作", "家人", "同學", "朋友"].map(c => (
-                                                <button key={c} onClick={()=>setResultData({...resultData, category: c})} className={`flex-1 py-2 text-xs rounded-lg font-bold border ${resultData.category===c ? "bg-blue-50 border-blue-200 text-blue-600" : "border-gray-100 text-gray-400"}`}>
-                                                    {c}
-                                                </button>
+                                                <button key={c} onClick={()=>setResultData({...resultData, category: c})} className={`flex-1 py-2 text-xs rounded-lg font-bold border ${resultData.category===c ? "bg-blue-50 border-blue-200 text-blue-600" : "border-gray-100 text-gray-400"}`}>{c}</button>
                                             ))}
                                         </div>
-
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="relative aspect-video bg-gray-50 rounded-xl flex items-center justify-center border border-dashed border-gray-300 overflow-hidden cursor-pointer" onClick={()=>document.getElementById('back-upload').click()}>
                                                 {backImage ? <img src={backImage} className="w-full h-full object-cover" /> : <div className="text-center text-xs text-gray-400"><Icon name="image" className="mx-auto mb-1"/>背面</div>}
@@ -898,7 +607,6 @@
                                             </div>
                                         </div>
                                     </div>
-
                                     <div className="flex gap-3 pt-4 pb-20">
                                         <button onClick={() => setView("home")} className="flex-1 py-3 rounded-xl font-bold text-gray-500 bg-gray-100">取消</button>
                                         <button onClick={saveCard} className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-600 shadow-lg shadow-blue-200">儲存名片</button>
