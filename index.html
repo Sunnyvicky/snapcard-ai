@@ -73,14 +73,12 @@
     <script type="text/babel">
         const { useState, useRef, useEffect, useMemo, Component } = React;
 
-        // --- 安全的 LocalStorage ---
         const safeLocalStorage = {
             getItem: (key) => { try { return localStorage.getItem(key); } catch (e) { return null; } },
             setItem: (key, value) => { try { localStorage.setItem(key, value); } catch (e) { } },
             removeItem: (key) => { try { localStorage.removeItem(key); } catch (e) { } }
         };
 
-        // --- IndexedDB ---
         const DB_NAME = 'SnapCardDB';
         const STORE_NAME = 'cards';
         const DB_VERSION = 1;
@@ -134,7 +132,6 @@
             }
         };
 
-        // --- Error Boundary ---
         class ErrorBoundary extends Component {
             constructor(props) { super(props); this.state = { hasError: false }; }
             static getDerivedStateFromError(error) { return { hasError: true }; }
@@ -254,12 +251,18 @@
             const [resultData, setResultData] = useState({});
             const [currentCardId, setCurrentCardId] = useState(null);
             const [filterCategory, setFilterCategory] = useState("全部");
+            
+            // LocalStorage Key 初始化
             const [apiKey, setApiKey] = useState(() => safeLocalStorage.getItem("snapcard_api_key") || "");
+            
             const [error, setError] = useState(null);
             const [statusMsg, setStatusMsg] = useState("AI 辨識中...");
             const [searchQuery, setSearchQuery] = useState(""); 
             const [testStatus, setTestStatus] = useState("idle"); 
             const [testMessage, setTestMessage] = useState("");
+
+            // 隨機名稱，欺騙瀏覽器自動填寫
+            const randomInputName = useMemo(() => `search_field_${Math.random().toString(36).slice(2)}`, []);
 
             useEffect(() => {
                 const timer = setTimeout(() => setShowSplash(false), 2000);
@@ -314,21 +317,53 @@
             const testConnection = async () => {
                 if (!apiKey) { setTestStatus("error"); setTestMessage("請先輸入 API Key"); return; }
                 setTestStatus("testing"); setTestMessage("連線測試中...");
+                
+                // 測試連線使用穩定版模型
+                const models = ["gemini-1.5-flash", "gemini-1.5-pro"];
+                let lastMsg = "未知錯誤";
+
+                const tryTest = async (index) => {
+                    if (index >= models.length) {
+                        throw new Error(`連線失敗: ${lastMsg}`);
+                    }
+                    const model = models[index];
+                    try {
+                        const cleanKey = apiKey.trim();
+                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`, {
+                            method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ contents: [{ parts: [{ text: "Hello" }] }] })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                            const msg = data.error?.message || res.statusText || "Unknown Error";
+                            lastMsg = `${res.status} ${msg}`;
+                            if (res.status === 400 && (msg.includes("API key") || msg.includes("API_KEY") || msg.includes("INVALID_ARGUMENT"))) {
+                                throw new Error("API Key 無效 (400)");
+                            }
+                            return await tryTest(index + 1);
+                        }
+                        return model;
+                    } catch (e) {
+                        if (e.message.includes("API Key")) throw e;
+                        lastMsg = e.message;
+                        return await tryTest(index + 1);
+                    }
+                };
+
                 try {
-                    const cleanKey = apiKey.trim();
-                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cleanKey}`, {
-                        method: "POST", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ contents: [{ parts: [{ text: "Hello" }] }] })
-                    });
-                    const data = await res.json();
-                    if (!res.ok) { const msg = data.error?.message || res.statusText || "Unknown Error"; throw new Error(`${res.status}: ${msg}`); }
-                    setTestStatus("success"); setTestMessage("API Key 有效！連線成功。");
-                } catch (e) { setTestStatus("error"); setTestMessage(`測試失敗: ${e.message}`); }
+                    const successModel = await tryTest(0);
+                    setTestStatus("success"); 
+                    setTestMessage(`API Key 有效！`);
+                } catch (e) {
+                    setTestStatus("error");
+                    setTestMessage(e.message);
+                }
             };
 
             const analyze = async (base64) => {
                 setIsProcessing(true); setError(null);
-                const models = ["gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-1.5-flash-8b", "gemini-1.5-pro"];
+                // 僅使用最穩定的模型，移除所有實驗性版本
+                const models = ["gemini-1.5-flash", "gemini-1.5-pro"];
                 let imageParts = [{ inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }];
                 const promptText = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作","note":""}。
                 重點規則：1. 請將電話區分為 mobile(手機), tel(市話), fax(傳真)。 2. company欄位請合併中文及英文名稱。 3. category從[工作,家人,同學,朋友]選。 4. note欄位保留空白。 無Markdown。`;
@@ -347,11 +382,15 @@
                         if (!res.ok) {
                             const errJson = await res.json().catch(() => ({}));
                             const msg = errJson.error?.message || errJson.error?.status || res.statusText;
-                            lastErrorMessage = `${res.status} ${msg}`;
+                            lastErrorMessage = `Model ${model} Error (${res.status}): ${msg}`;
+                            
                             if (res.status === 400 && (msg.includes("API key") || msg.includes("API_KEY") || msg.includes("INVALID_ARGUMENT"))) {
                                 throw new Error("API Key 無效，請檢查設定。");
                             }
-                            console.warn(`Model ${model} failed (${res.status}): ${msg}`);
+                            if (res.status === 404) {
+                                console.warn(`Model ${model} not found (404). Trying next...`);
+                            }
+                            
                             await new Promise(r => setTimeout(r, 1000));
                             return await tryModel(index + 1);
                         }
@@ -463,9 +502,10 @@
                         <div style={{ width: '64px', height: '64px', background: 'linear-gradient(135deg, #3b82f6 0%, #0f172a 100%)', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.4)' }}>
                             <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 512 512" fill="none">
                                 <rect x="96" y="156" width="320" height="200" rx="24" fill="white"/>
-                                <rect x="136" y="190" width="140" height="32" rx="8" fill="#cbd5e1"/>
-                                <rect x="136" y="250" width="240" height="20" rx="6" fill="#e2e8f0"/>
-                                <rect x="136" y="290" width="180" height="20" rx="6" fill="#e2e8f0"/>
+                                <rect x="96" y="190" width="320" height="16" fill="#f97316"/>
+                                <circle cx="170" cy="256" r="30" fill="#cbd5e1"/>
+                                <rect x="230" y="240" width="120" height="16" rx="4" fill="#94a3b8"/>
+                                <rect x="230" y="270" width="80" height="12" rx="3" fill="#e2e8f0"/>
                                 <path d="M64 256h384" stroke="#f59e0b" strokeWidth="32" strokeLinecap="round"/>
                             </svg>
                         </div>
@@ -533,7 +573,30 @@
                                         <input type="text" name="fake_username" tabIndex="-1" />
                                         <input type="password" name="fake_password" tabIndex="-1" />
                                     </div>
-                                    <input type="password" autoComplete="new-password" name="gemini_api_key_field" value={apiKey} onChange={(e) => { setApiKey(e.target.value); safeLocalStorage.setItem("snapcard_api_key", e.target.value); }} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm mb-3 focus:ring-2 focus:ring-blue-100 focus:outline-none" placeholder="AIzaSy..." />
+                                    
+                                    <div className="relative">
+                                        <input 
+                                            type="password" 
+                                            autoComplete="off" 
+                                            data-lpignore="true"
+                                            readOnly={true} 
+                                            onFocus={(e) => e.target.removeAttribute('readonly')}
+                                            name={randomInputName}
+                                            value={apiKey} 
+                                            onChange={(e) => { setApiKey(e.target.value); safeLocalStorage.setItem("snapcard_api_key", e.target.value); }} 
+                                            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm mb-3 focus:ring-2 focus:ring-blue-100 focus:outline-none pr-10" 
+                                            placeholder="AIzaSy..." 
+                                        />
+                                        {apiKey && (
+                                            <button 
+                                                onClick={() => { setApiKey(""); safeLocalStorage.setItem("snapcard_api_key", ""); }} 
+                                                className="absolute right-3 top-3 text-gray-400 hover:text-red-500"
+                                            >
+                                                <Icon name="x" size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+
                                     <div className="flex gap-2 mb-2">
                                         <button onClick={testConnection} disabled={testStatus === "testing"} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${testStatus === "success" ? "bg-green-100 text-green-700" : testStatus === "error" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}>{testStatus === "testing" ? "測試中..." : testStatus === "success" ? "測試成功" : "測試連線"}</button>
                                         <button onClick={() => window.open("https://aistudio.google.com/app/apikey", "_blank")} className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors">取得 Key</button>
@@ -548,7 +611,7 @@
                                         <button onClick={clearAllData} className="w-full flex items-center justify-between p-3 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-colors"><span>清空所有資料</span><Icon name="trash" size={18} /></button>
                                     </div>
                                 </div>
-                                <div className="text-center text-xs text-gray-400 mt-8">AA Version Stable • Local Storage Only</div>
+                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 3.2 • Local Storage Only</div>
                                 <button onClick={() => setView("home")} className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4">返回</button>
                             </div>
                         )}
