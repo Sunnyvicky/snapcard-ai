@@ -356,6 +356,10 @@
             const [searchQuery, setSearchQuery] = useState(""); 
             const importFileRef = useRef(null); 
 
+            // 測試連線相關 State
+            const [testStatus, setTestStatus] = useState("idle"); // idle, testing, success, error
+            const [testMessage, setTestMessage] = useState("");
+
             useEffect(() => {
                 const timer = setTimeout(() => setShowSplash(false), 2000);
                 if (navigator.storage && navigator.storage.persist) {
@@ -406,7 +410,7 @@
                     if (window.lucide) window.lucide.createIcons();
                 }, 50);
                 return () => clearTimeout(timer);
-            }, [view, cards.length, resultData, additionalImage, backImage, currentAvatar, filterCategory, showSplash]);
+            }, [view, cards.length, resultData, additionalImage, backImage, currentAvatar, filterCategory, showSplash, testStatus]);
 
             const startScanFlow = () => {
                 if (!apiKey) {
@@ -432,14 +436,50 @@
                 analyze(base64);
             };
 
+            // 測試連線功能
+            const testConnection = async () => {
+                if (!apiKey) {
+                    setTestStatus("error");
+                    setTestMessage("請先輸入 API Key");
+                    return;
+                }
+                setTestStatus("testing");
+                setTestMessage("連線測試中...");
+                
+                try {
+                    // 使用最穩定的模型進行測試，只為了驗證 Key 是否有效
+                    const cleanKey = apiKey.trim();
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cleanKey}`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: "Hello" }] }]
+                        })
+                    });
+
+                    const data = await res.json();
+                    
+                    if (!res.ok) {
+                        const msg = data.error?.message || res.statusText || "Unknown Error";
+                        throw new Error(`${res.status}: ${msg}`);
+                    }
+
+                    setTestStatus("success");
+                    setTestMessage("API Key 有效！連線成功。");
+                } catch (e) {
+                    setTestStatus("error");
+                    setTestMessage(`測試失敗: ${e.message}`);
+                }
+            };
+
             const analyze = async (base64) => {
                 setIsProcessing(true);
                 setError(null);
                 
-                // 使用您指定的順序：優先使用 2.0-flash-exp
+                // 修正順序：優先使用 1.5-flash 以避免 404 (2.0-exp 可能已過期或路徑變更)
                 const models = [
-                    "gemini-2.0-flash-exp",
                     "gemini-1.5-flash",
+                    "gemini-2.0-flash-exp",
                     "gemini-1.5-flash-8b",
                     "gemini-1.5-pro"
                 ];
@@ -459,7 +499,7 @@
                 let lastErrorMessage = "未知錯誤";
 
                 const tryModel = async (index) => {
-                    // 如果所有模型都失敗，拋出最後一個錯誤訊息，而不是籠統的「連線失敗」
+                    // 如果所有模型都失敗，拋出最後一個錯誤訊息
                     if (index >= models.length) {
                         throw new Error(`分析失敗，請檢查 API Key 或網路。\n最後錯誤: ${lastErrorMessage}`);
                     }
@@ -491,7 +531,7 @@
                                 throw new Error("API Key 無效，請檢查設定。");
                             }
 
-                            // 其他錯誤 (包含一般 400, 429, 500 等) 都嘗試下一個模型
+                            // 其他錯誤 (包含 404 Not Found, 429, 500 等) 都嘗試下一個模型
                             console.warn(`Model ${model} failed (${res.status}): ${msg}`);
                             await new Promise(r => setTimeout(r, 1000));
                             return await tryModel(index + 1);
@@ -699,7 +739,7 @@
                             </svg>
                         </div>
                         <h1 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', fontFamily: 'sans-serif', letterSpacing: '-0.5px' }}>SNAPCARD AI</h1>
-                        <p style={{ fontSize: '14px', color: '#64748b', fontFamily: 'sans-serif', marginTop: '8px', letterSpacing: '1px' }}>人脈，是最好的資產</p>
+                        <p style="font-size: 14px; color: #64748b', fontFamily: 'sans-serif', marginTop: '8px', letterSpacing: '1px' }}>人脈，是最好的資產</p>
                     </div>
                 );
             }
@@ -781,10 +821,18 @@
                                         <Icon name="key" className="text-blue-500" /> API 設定
                                     </h3>
                                     <p className="text-xs text-gray-500 mb-2">請輸入您的 Google Gemini API Key</p>
+                                    
+                                    {/* 隱藏欄位欺騙法：防止瀏覽器自動填入密碼 */}
+                                    <div style={{opacity: 0, position: 'absolute', top: 0, left: 0, height: 0, width: 0, zIndex: -1}}>
+                                        <input type="text" name="fake_username" tabIndex="-1" />
+                                        <input type="password" name="fake_password" tabIndex="-1" />
+                                    </div>
+                                    
                                     <input 
                                         type="password" 
-                                        autoComplete="new-password" 
-                                        name="api-key-input-field"
+                                        autoComplete="off" 
+                                        data-lpignore="true"
+                                        name={`snapcard_api_key_${Math.random().toString(36).substring(7)}`}
                                         value={apiKey}
                                         onChange={(e) => {
                                             setApiKey(e.target.value);
@@ -793,9 +841,21 @@
                                         className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm mb-3 focus:ring-2 focus:ring-blue-100 focus:outline-none"
                                         placeholder="AIzaSy..."
                                     />
-                                    <button onClick={() => window.open("https://aistudio.google.com/app/apikey", "_blank")} className="w-full bg-blue-50 text-blue-600 py-2 rounded-lg text-sm font-bold hover:bg-blue-100 transition-colors">
-                                        取得免費 Key
-                                    </button>
+                                    
+                                    {/* 測試按鈕區域 */}
+                                    <div className="flex gap-2 mb-2">
+                                        <button onClick={testConnection} disabled={testStatus === "testing"} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${testStatus === "success" ? "bg-green-100 text-green-700" : testStatus === "error" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}>
+                                            {testStatus === "testing" ? "測試中..." : testStatus === "success" ? "測試成功" : "測試連線"}
+                                        </button>
+                                        <button onClick={() => window.open("https://aistudio.google.com/app/apikey", "_blank")} className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors">
+                                            取得 Key
+                                        </button>
+                                    </div>
+                                    {testMessage && (
+                                        <div className={`text-xs p-2 rounded ${testStatus === 'success' ? 'text-green-600 bg-green-50' : testStatus === 'error' ? 'text-red-600 bg-red-50' : 'text-gray-500'}`}>
+                                            {testMessage}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
@@ -820,7 +880,7 @@
                                 </div>
                                 
                                 <div className="text-center text-xs text-gray-400 mt-8">
-                                    AA Version 2.2 • Local Storage Only
+                                    AA Version 2.4 • Local Storage Only
                                 </div>
 
                                 <button onClick={() => setView("home")} className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4">
