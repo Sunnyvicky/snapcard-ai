@@ -184,7 +184,7 @@
             }
         };
 
-        // --- 錯誤邊界元件 ---
+        // --- 錯誤邊界元件 (修復拼字錯誤) ---
         class ErrorBoundary extends Component {
             constructor(props) {
                 super(props);
@@ -369,10 +369,10 @@
             const clearApiKey = () => { setApiKey(""); safeLocalStorage.setItem("snapcard_api_key", ""); setTestStatus("idle"); setTestMessage(""); };
 
             const tryModels = async (fn) => {
-                // 輪詢模型策略：2.0-exp (快) -> 1.5-flash (穩) -> 1.5-pro (強)
+                // 輪詢模型策略：1.5-flash (穩定) -> 2.0-exp (快) -> 1.5-pro (強)
                 const models = [
-                    "gemini-2.0-flash-exp",
                     "gemini-1.5-flash",
+                    "gemini-2.0-flash-exp",
                     "gemini-1.5-pro",
                     "gemini-1.0-pro"
                 ];
