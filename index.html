@@ -33,6 +33,7 @@
         .hide-scrollbar::-webkit-scrollbar { 
             display: none; 
         }
+        /* 強制影片滿版且最上層 */
         video {
             position: absolute;
             top: 0;
@@ -41,8 +42,9 @@
             height: 100%;
             object-fit: cover;
             z-index: 10;
-            transform: scaleX(1);
+            transform: scaleX(1); /* 確保後鏡頭不鏡像 */
         }
+        /* 掃描線動畫 */
         @keyframes scan {
             0% { top: 0%; opacity: 0; }
             50% { opacity: 1; }
@@ -57,6 +59,7 @@
             box-shadow: 0 0 10px #f97316;
             animation: scan 2s linear infinite;
         }
+        /* 啟動畫面樣式 */
         .splash-screen {
             position: fixed;
             top: 0;
@@ -75,6 +78,7 @@
 </head>
 <body>
     <div id="root">
+        <!-- 預先顯示的啟動畫面 -->
         <div class="splash-screen">
             <div style="width: 64px; height: 64px; background: linear-gradient(135deg, #3b82f6 0%, #0f172a 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.4);">
                 <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 512 512" fill="none">
@@ -85,8 +89,8 @@
                     <rect x="230" y="270" width="80" height="12" rx="3" fill="#e2e8f0"/>
                 </svg>
             </div>
-            <h1 style="font-size: 20px; font-weight: 900; color: #1e293b; font-family: sans-serif;">SNAPCARD AI</h1>
-            <p style="font-size: 14px; color: #64748b; font-family: sans-serif; margin-top: 8px;">人脈，是最好的資產</p>
+            <h1 style="font-size: 20px; font-weight: 900; color: #1e293b; font-family: sans-serif; letter-spacing: -0.5px;">SNAPCARD AI</h1>
+            <p style="font-size: 14px; color: #64748b; font-family: sans-serif; margin-top: 8px; letter-spacing: 1px;">人脈，是最好的資產</p>
         </div>
     </div>
 
@@ -312,9 +316,7 @@
             const [currentCardId, setCurrentCardId] = useState(null);
             const [filterCategory, setFilterCategory] = useState("全部");
             
-            // 強制從空字串開始，不讀取舊資料
-            const [apiKey, setApiKey] = useState("");
-            
+            const [apiKey, setApiKey] = useState(""); // 強制預設為空
             const [error, setError] = useState(null);
             const [statusMsg, setStatusMsg] = useState("AI 辨識中...");
             const [searchQuery, setSearchQuery] = useState(""); 
@@ -353,11 +355,13 @@
             const handleImageUpload = async (e, setter) => { if (e.target.files[0]) { try { const b = await compressImage(e.target.files[0]); setter(b); } catch(err) { alert("圖片處理失敗"); } } };
             const clearApiKey = () => { setApiKey(""); setTestStatus("idle"); setTestMessage(""); };
 
+            // 核心連線引擎：雙軌路徑 + 多模型輪詢
             const tryModels = async (fn) => {
                 const models = [
                     "gemini-1.5-flash",
                     "gemini-2.0-flash-exp", 
-                    "gemini-1.5-pro"
+                    "gemini-1.5-pro",
+                    "gemini-pro"
                 ];
                 let errors = [];
                 for (const model of models) {
@@ -365,21 +369,27 @@
                         const cleanKey = apiKey.trim();
                         setStatusMsg(`AI 辨識中 (${model})...`);
                         
-                        // 統一使用 v1beta
-                        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
-                        const res = await fn(url, cleanKey);
+                        // 1. 先試 v1beta
+                        let url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
+                        let res = await fn(url, cleanKey);
+                        
+                        // 2. 如果 404，立刻試 v1
+                        if (res.status === 404) {
+                            console.warn(`${model} v1beta 404, fallback to v1`);
+                            url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${cleanKey}`;
+                            res = await fn(url, cleanKey);
+                        }
 
                         if (!res.ok) {
                             const d = await res.json().catch(()=>({}));
                             const msg = d.error?.message || res.statusText;
                             errors.push(`${model}: ${res.status}`);
                             
-                            // 400 = Key 錯
+                            // 400 = Key 錯誤，直接停
                             if(res.status===400 && (msg.includes("API key")||msg.includes("INVALID_ARGUMENT"))) {
                                 throw new Error(`API Key 無效 (400): ${msg}`);
                             }
                             
-                            console.warn(`Model ${model} fail: ${msg}`);
                             await new Promise(r => setTimeout(r, 500));
                             continue;
                         }
@@ -514,7 +524,7 @@
                                     <div style={{height:0,overflow:'hidden'}}><input type="text" /><input type="password" /></div>
                                     <div className="relative mb-4">
                                         <label className="text-xs text-gray-500 block mb-1">Google API Key</label>
-                                        <input type="password" autoComplete="off" readOnly onFocus={e=>e.target.removeAttribute('readonly')} name={randomInputName} value={apiKey} onChange={e=>{setApiKey(e.target.value);}} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-blue-100" placeholder="AIzaSy..." />
+                                        <input type="password" autoComplete="new-password" readOnly onFocus={e=>e.target.removeAttribute('readonly')} name={randomInputName} value={apiKey} onChange={e=>{setApiKey(e.target.value);}} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-blue-100" placeholder="AIzaSy..." />
                                         {apiKey && <button onClick={clearApiKey} className="absolute right-3 top-8 text-gray-400 hover:text-red-500"><Icon name="x" size={16}/></button>}
                                     </div>
 
@@ -532,7 +542,7 @@
                                         <button onClick={clearAllData} className="w-full flex justify-between p-3 bg-red-50 text-red-600 rounded-xl"><span>清空資料</span><Icon name="trash" size={18}/></button>
                                     </div>
                                 </div>
-                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 9.0 (Reset Edition)</div>
+                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 9.5 (Double Path)</div>
                                 <button onClick={()=>setView("home")} className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4">返回</button>
                             </div>
                         )}
@@ -561,11 +571,11 @@
                                             {k:"company",i:"building",p:"公司"},{k:"mobile",i:"smartphone",p:"手機"},{k:"tel",i:"phone",p:"電話"},
                                             {k:"fax",i:"printer",p:"傳真"},{k:"email",i:"mail",p:"Email"},{k:"address",i:"map-pin",p:"地址"}
                                         ].map(f => {
-                                            const isLink = (f.k==='mobile'||f.k==='tel'||f.k==='email') && resultData[f.k];
+                                            const isActionable = (f.k==='mobile'||f.k==='tel'||f.k==='email') && resultData[f.k];
                                             const href = f.k==='email' ? `mailto:${resultData[f.k]}` : `tel:${resultData[f.k]}`;
                                             return (
                                                 <div key={f.k} className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl">
-                                                    {isLink ? <a href={href} className="text-blue-500 active:text-blue-700"><Icon name={f.i} size={18}/></a> : <Icon name={f.i} className="text-gray-400" size={18}/>}
+                                                    {isActionable ? <a href={href} className="text-blue-500 active:text-blue-700"><Icon name={f.i} size={18}/></a> : <Icon name={f.i} className="text-gray-400" size={18}/>}
                                                     <input type="text" value={resultData[f.k]||""} onChange={e=>setResultData({...resultData,[f.k]:e.target.value})} placeholder={f.p} className="flex-1 bg-transparent text-sm focus:outline-none" />
                                                 </div>
                                             );
