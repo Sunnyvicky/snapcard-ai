@@ -8,33 +8,80 @@
     <!-- PWA 設定 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SnapCard">
     <meta name="theme-color" content="#1e3a8a">
     
     <!-- App Icon -->
     <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%231e3a8a'/%3E%3Cstop offset='1' stop-color='%230f172a'/%3E%3C/linearGradient%3E%3Cfilter id='shadow'%3E%3CfeDropShadow dx='0' dy='8' stdDeviation='12' flood-opacity='0.25'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='512' height='512' rx='120' fill='url(%23bg)'/%3E%3C!-- 名片本體 --%3E%3Cg filter='url(%23shadow)'%3E%3Crect x='86' y='156' width='340' height='200' rx='20' fill='white'/%3E%3Crect x='86' y='190' width='340' height='8' fill='%23f59e0b'/%3E%3Ccircle cx='160' cy='256' r='35' fill='%23e2e8f0'/%3E%3Crect x='220' y='236' width='140' height='16' rx='4' fill='%2394a3b8'/%3E%3Crect x='220' y='266' width='100' height='12' rx='3' fill='%23cbd5e1'/%3E%3C/g%3E%3C/svg%3E">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%231e3a8a'/%3E%3Cstop offset='1' stop-color='%230f172a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='120' fill='url(%23bg)'/%3E%3Crect x='86' y='156' width='340' height='200' rx='20' fill='white'/%3E%3Crect x='86' y='190' width='340' height='8' fill='%23f59e0b'/%3E%3Ccircle cx='160' cy='256' r='35' fill='%23e2e8f0'/%3E%3Crect x='220' y='236' width='140' height='16' rx='4' fill='%2394a3b8'/%3E%3Crect x='220' y='266' width='100' height='12' rx='3' fill='%23cbd5e1'/%3E%3C/svg%3E">
 
-    <!-- Libraries -->
+    <!-- 核心函式庫 -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Tesseract.js 本機 OCR 引擎 -->
+    
+    <!-- Tesseract.js (本機 OCR 引擎) -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
     <style>
-        body { background-color: #f8fafc; color: #1e293b; margin: 0; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 10; transform: scaleX(1); }
-        @keyframes scan { 0% { top: 0%; opacity: 0; } 50% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
-        .scan-line { position: absolute; left: 0; width: 100%; height: 2px; background: #f97316; box-shadow: 0 0 10px #f97316; animation: scan 2s linear infinite; }
-        .splash-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #f8fafc; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; transition: opacity 0.5s; }
+        body { 
+            background-color: #f8fafc; 
+            color: #1e293b; 
+            margin: 0; 
+            overflow-x: hidden; 
+            -webkit-tap-highlight-color: transparent; 
+        }
+        .hide-scrollbar::-webkit-scrollbar { 
+            display: none; 
+        }
+        /* 強制影片滿版且最上層 */
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 10;
+            transform: scaleX(1); /* 確保後鏡頭不鏡像 */
+        }
+        /* 掃描線動畫 (橘金色) */
+        @keyframes scan {
+            0% { top: 0%; opacity: 0; }
+            50% { opacity: 1; }
+            100% { top: 100%; opacity: 0; }
+        }
+        .scan-line {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: #f97316;
+            box-shadow: 0 0 10px #f97316;
+            animation: scan 2s linear infinite;
+        }
+        /* 啟動畫面樣式 */
+        .splash-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease-out;
+        }
     </style>
 </head>
 <body>
     <div id="root">
-        <!-- 靜態啟動畫面 -->
+        <!-- 預先顯示的啟動畫面 -->
         <div class="splash-screen">
             <div style="width: 64px; height: 64px; background: linear-gradient(135deg, #3b82f6 0%, #0f172a 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.4);">
                 <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 512 512" fill="none">
@@ -45,101 +92,144 @@
                     <rect x="230" y="270" width="80" height="12" rx="3" fill="#e2e8f0"/>
                 </svg>
             </div>
-            <h1 style="font-size: 20px; font-weight: 900; color: #1e293b; font-family: sans-serif;">SNAPCARD AI</h1>
-            <p style="font-size: 14px; color: #64748b; font-family: sans-serif; margin-top: 8px;">人脈，是最好的資產</p>
+            <h1 style="font-size: 20px; font-weight: 900; color: #1e293b; font-family: sans-serif; letter-spacing: -0.5px;">SNAPCARD AI</h1>
+            <p style="font-size: 14px; color: #64748b; font-family: sans-serif; margin-top: 8px; letter-spacing: 1px;">人脈，是最好的資產</p>
         </div>
     </div>
 
-    <!-- 錯誤攔截顯示 -->
+    <!-- 全域錯誤攔截 -->
     <script>
-        window.onerror = function(message) {
+        window.onerror = function(message, source, lineno, colno, error) {
+            console.error("Global Error:", error);
             const root = document.getElementById('root');
-            if(root) root.innerHTML = '<div style="padding:20px;text-align:center;color:red;margin-top:50px;"><h3>程式錯誤</h3><p>'+message+'</p><button onclick="localStorage.clear();location.reload()" style="padding:10px;margin-top:10px;">重置資料</button></div>';
+            if (root) {
+                root.innerHTML = '<div style="padding:20px; text-align:center; color:red; margin-top:50px;"><h3>應用程式發生錯誤</h3><p>' + message + '</p><button onclick="localStorage.clear();location.reload()" style="padding:10px; background:#eee; border:1px solid #ccc; border-radius:5px; margin-top:10px;">清除資料並重整</button></div>';
+            }
         };
     </script>
 
     <script type="text/babel">
         const { useState, useRef, useEffect, useMemo, Component } = React;
 
-        // --- 安全的 LocalStorage ---
+        // --- 安全的 LocalStorage 封裝 (防止隱私模式報錯) ---
         const safeLocalStorage = {
-            getItem: (key) => { try { return localStorage.getItem(key); } catch (e) { return null; } },
-            setItem: (key, value) => { try { localStorage.setItem(key, value); } catch (e) { } },
-            removeItem: (key) => { try { localStorage.removeItem(key); } catch (e) { } }
+            getItem: (key) => {
+                try {
+                    return localStorage.getItem(key);
+                } catch (e) {
+                    console.warn('LocalStorage Access Denied');
+                    return null;
+                }
+            },
+            setItem: (key, value) => {
+                try {
+                    localStorage.setItem(key, value);
+                } catch (e) {
+                    console.warn('LocalStorage Write Failed');
+                }
+            },
+            removeItem: (key) => {
+                try {
+                    localStorage.removeItem(key);
+                } catch (e) { }
+            }
         };
 
-        // --- IndexedDB ---
+        // --- IndexedDB 資料庫工具 (完整版) ---
         const DB_NAME = 'SnapCardDB';
         const STORE_NAME = 'cards';
         const DB_VERSION = 1;
 
         const dbUtils = {
-            open: () => new Promise((resolve, reject) => {
-                try {
-                    const request = indexedDB.open(DB_NAME, DB_VERSION);
-                    request.onupgradeneeded = (e) => {
-                        const db = e.target.result;
-                        if (!db.objectStoreNames.contains(STORE_NAME)) {
-                            db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-                        }
-                    };
-                    request.onsuccess = (e) => resolve(e.target.result);
-                    request.onerror = (e) => reject(e.target.error);
-                } catch(e) { reject(e); }
-            }),
+            open: () => {
+                return new Promise((resolve, reject) => {
+                    try {
+                        const request = indexedDB.open(DB_NAME, DB_VERSION);
+                        request.onupgradeneeded = (event) => {
+                            const db = event.target.result;
+                            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                                db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                            }
+                        };
+                        request.onsuccess = (event) => resolve(event.target.result);
+                        request.onerror = (event) => reject(event.target.error);
+                    } catch (e) {
+                        reject(new Error("IndexedDB 不支援或被停用"));
+                    }
+                });
+            },
             getAll: async () => {
                 const db = await dbUtils.open();
                 return new Promise((resolve, reject) => {
-                    const tx = db.transaction([STORE_NAME], 'readonly');
-                    const req = tx.objectStore(STORE_NAME).getAll();
-                    req.onsuccess = () => resolve(req.result);
-                    req.onerror = () => reject(req.error);
+                    const transaction = db.transaction([STORE_NAME], 'readonly');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.getAll();
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
                 });
             },
             put: async (card) => {
                 const db = await dbUtils.open();
                 return new Promise((resolve, reject) => {
-                    const tx = db.transaction([STORE_NAME], 'readwrite');
-                    const req = tx.objectStore(STORE_NAME).put(card);
-                    req.onsuccess = () => resolve(req.result);
-                    req.onerror = () => reject(req.error);
+                    const transaction = db.transaction([STORE_NAME], 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.put(card);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
                 });
             },
             delete: async (id) => {
                 const db = await dbUtils.open();
                 return new Promise((resolve, reject) => {
-                    const tx = db.transaction([STORE_NAME], 'readwrite');
-                    const req = tx.objectStore(STORE_NAME).delete(id);
-                    req.onsuccess = () => resolve();
-                    req.onerror = () => reject(req.error);
+                    const transaction = db.transaction([STORE_NAME], 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.delete(id);
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
                 });
             },
             clear: async () => {
                 const db = await dbUtils.open();
                 return new Promise((resolve, reject) => {
-                    const tx = db.transaction([STORE_NAME], 'readwrite');
-                    const req = tx.objectStore(STORE_NAME).clear();
-                    req.onsuccess = () => resolve();
-                    req.onerror = () => reject(req.error);
+                    const transaction = db.transaction([STORE_NAME], 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.clear();
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
                 });
             }
         };
 
-        // --- Error Boundary ---
+        // --- 錯誤邊界元件 ---
         class ErrorBoundary extends Component {
-            constructor(props) { super(props); this.state = { hasError: false }; }
-            static getDerivedStateFromError(error) { return { hasError: true }; }
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
             render() {
                 if (this.state.hasError) {
-                    return <div className="h-screen flex items-center justify-center p-6 text-center text-red-600">系統錯誤，請重新整理頁面。</div>;
+                    return (
+                        <div className="h-screen flex flex-col items-center justify-center p-6 text-center bg-gray-50">
+                            <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4">
+                                !
+                            </div>
+                            <h2 className="text-xl font-bold text-gray-800 mb-2">發生預期外的錯誤</h2>
+                            <p className="text-sm text-gray-500 mb-4 break-all">{this.state.error?.message}</p>
+                            <button onClick={() => window.location.reload()} className="bg-blue-600 text-white px-6 py-2 rounded-full shadow-lg">重新整理</button>
+                        </div>
+                    );
                 }
                 return this.props.children;
             }
         }
 
-        // --- Icons ---
+        // --- Icon 元件 (Lucide) ---
         const Icon = ({ name, size = 20, className = "" }) => {
             const ref = useRef(null);
+
             useEffect(() => {
                 if (!ref.current || !window.lucide) return;
                 const container = ref.current;
@@ -147,12 +237,21 @@
                 const i = document.createElement('i');
                 i.setAttribute('data-lucide', name);
                 container.appendChild(i);
-                window.lucide.createIcons({ root: container, nameAttr: 'data-lucide', attrs: { width: size, height: size, class: className } });
+                window.lucide.createIcons({
+                    root: container,
+                    nameAttr: 'data-lucide',
+                    attrs: {
+                        width: size,
+                        height: size,
+                        class: className
+                    }
+                });
             }, [name, size, className]);
+
             return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center' }}></span>;
         };
 
-        // --- Image Utils ---
+        // --- 圖片壓縮工具 ---
         const compressImage = (file) => {
             return new Promise((resolve, reject) => {
                 if (!file) return reject("無檔案");
@@ -162,20 +261,33 @@
                 img.onload = () => {
                     URL.revokeObjectURL(url);
                     const canvas = document.createElement('canvas');
-                    const MAX_SIZE = 800; 
-                    let width = img.width, height = img.height;
-                    if (width > height) { if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } }
-                    else { if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; } }
-                    canvas.width = width; canvas.height = height;
+                    const MAX_SIZE = 1200; // 提高解析度以利 OCR
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_SIZE) {
+                            height *= MAX_SIZE / width;
+                            width = MAX_SIZE;
+                        }
+                    } else {
+                        if (height > MAX_SIZE) {
+                            width *= MAX_SIZE / height;
+                            height = MAX_SIZE;
+                        }
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.6)); 
+                    // 品質設為 0.8 平衡清晰度與大小
+                    resolve(canvas.toDataURL('image/jpeg', 0.8)); 
                 };
                 img.onerror = reject;
             });
         };
 
-        // --- Camera ---
+        // --- 相機掃描元件 ---
         const CameraScanner = ({ onCapture, onCancel }) => {
             const videoRef = useRef(null);
             const [error, setError] = useState(null);
@@ -184,32 +296,66 @@
                 let stream = null;
                 const startCamera = async () => {
                     try {
-                        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-                        if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play().catch(e => console.error("Play error", e)); }
-                    } catch (e) { setError("無法啟動相機: " + e.message); }
+                        stream = await navigator.mediaDevices.getUserMedia({
+                            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+                            audio: false
+                        });
+                        if (videoRef.current) {
+                            videoRef.current.srcObject = stream;
+                            videoRef.current.play().catch(e => console.error("Play error", e));
+                        }
+                    } catch (e) {
+                        setError("無法啟動相機: " + e.message);
+                    }
                 };
                 startCamera();
-                return () => { if (stream) stream.getTracks().forEach(t => t.stop()); };
+                return () => {
+                    if (stream) stream.getTracks().forEach(t => t.stop());
+                };
             }, []);
-            
+
             const capture = () => {
                 if (!videoRef.current) return;
                 const video = videoRef.current;
                 const canvas = document.createElement("canvas");
+                
                 const videoRatio = video.videoWidth / video.videoHeight;
                 const displayRatio = video.clientWidth / video.clientHeight;
+                
                 let sx = 0, sy = 0, sWidth = video.videoWidth, sHeight = video.videoHeight;
-                if (videoRatio > displayRatio) { sWidth = video.videoHeight * displayRatio; sx = (video.videoWidth - sWidth) / 2; }
-                else { sHeight = video.videoWidth / displayRatio; sy = (video.videoHeight - sHeight) / 2; }
-                const frameWidthInSource = sWidth * 0.75, frameHeightInSource = frameWidthInSource / 1.6;
-                const frameX = sx + (sWidth - frameWidthInSource) / 2, frameY = sy + (sHeight - frameHeightInSource) / 2;
-                const MAX_DIM = 1000;
-                let destWidth = frameWidthInSource, destHeight = frameHeightInSource;
-                if (destWidth > MAX_DIM || destHeight > MAX_DIM) { const scale = Math.min(MAX_DIM / destWidth, MAX_DIM / destHeight); destWidth *= scale; destHeight *= scale; }
-                canvas.width = destWidth; canvas.height = destHeight;
+
+                if (videoRatio > displayRatio) {
+                    sWidth = video.videoHeight * displayRatio;
+                    sx = (video.videoWidth - sWidth) / 2;
+                } else {
+                    sHeight = video.videoWidth / displayRatio;
+                    sy = (video.videoHeight - sHeight) / 2;
+                }
+
+                // 計算藍色掃描框在原始影片中的位置
+                const frameWidthInSource = sWidth * 0.75; 
+                const frameHeightInSource = frameWidthInSource / 1.6;
+
+                const frameX = sx + (sWidth - frameWidthInSource) / 2;
+                const frameY = sy + (sHeight - frameHeightInSource) / 2;
+
+                const MAX_DIM = 1200;
+                let destWidth = frameWidthInSource;
+                let destHeight = frameHeightInSource;
+                
+                if (destWidth > MAX_DIM || destHeight > MAX_DIM) {
+                    const scale = Math.min(MAX_DIM / destWidth, MAX_DIM / destHeight);
+                    destWidth *= scale;
+                    destHeight *= scale;
+                }
+
+                canvas.width = destWidth;
+                canvas.height = destHeight;
+                
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, frameX, frameY, frameWidthInSource, frameHeightInSource, 0, 0, destWidth, destHeight);
-                onCapture(canvas.toDataURL("image/jpeg", 0.7));
+                
+                onCapture(canvas.toDataURL("image/jpeg", 0.8));
             };
 
             return (
@@ -217,6 +363,7 @@
                     <div className="flex-1 relative overflow-hidden">
                         <video ref={videoRef} playsInline muted autoPlay className="w-full h-full object-cover" />
                         {error && <div className="absolute inset-0 flex items-center justify-center text-white bg-black/80">{error}</div>}
+                        
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
                             <div className="w-3/4 aspect-[1.6/1] border-2 border-blue-500 rounded-xl relative shadow-[0_0_0_999px_rgba(0,0,0,0.5)] overflow-hidden">
                                 <div className="scan-line"></div>
@@ -226,7 +373,9 @@
                                 <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-blue-500 -mb-1 -mr-1"></div>
                             </div>
                         </div>
-                        <div className="absolute bottom-32 w-full text-center z-20"><span className="px-4 py-2 bg-black/50 text-white text-xs rounded-full">請將名片放入框內</span></div>
+                        <div className="absolute bottom-32 w-full text-center z-20">
+                            <span className="px-4 py-2 bg-black/50 text-white text-xs rounded-full">請將名片放入框內</span>
+                        </div>
                     </div>
                     <div className="h-32 bg-black flex items-center justify-center gap-8 z-30">
                         <button onClick={onCancel} className="text-white font-bold p-4">取消</button>
@@ -237,30 +386,40 @@
             );
         };
 
+        // --- 主程式 App ---
         function App() {
             const [showSplash, setShowSplash] = useState(true);
             const [view, setView] = useState("home");
             const [cards, setCards] = useState([]);
             const [isLoadingDB, setIsLoadingDB] = useState(true);
+            
             const [capturedImage, setCapturedImage] = useState(null); 
             const [backImage, setBackImage] = useState(null); 
-            const [currentAvatar, setCurrentAvatar] = useState(null); 
+            const [currentAvatar, setCurrentAvatar] = useState(null);
             const [additionalImage, setAdditionalImage] = useState(null);
+            
             const [isProcessing, setIsProcessing] = useState(false);
             const [resultData, setResultData] = useState({});
             const [currentCardId, setCurrentCardId] = useState(null);
             const [filterCategory, setFilterCategory] = useState("全部");
+            
+            // API Key 讀取
             const [apiKey, setApiKey] = useState(() => safeLocalStorage.getItem("snapcard_api_key") || "");
+            
             const [error, setError] = useState(null);
             const [statusMsg, setStatusMsg] = useState("AI 辨識中...");
             const [searchQuery, setSearchQuery] = useState(""); 
             const [testStatus, setTestStatus] = useState("idle"); 
             const [testMessage, setTestMessage] = useState("");
 
+            // 隨機名稱，欺騙瀏覽器自動填寫
             const randomInputName = useMemo(() => `search_field_${Math.random().toString(36).slice(2)}`, []);
 
             useEffect(() => {
                 const timer = setTimeout(() => setShowSplash(false), 2000);
+                if (navigator.storage && navigator.storage.persist) {
+                    navigator.storage.persist().then(granted => console.log("Persistence:", granted));
+                }
                 return () => clearTimeout(timer);
             }, []);
 
@@ -269,23 +428,81 @@
                     try {
                         setIsLoadingDB(true);
                         const dbCards = await dbUtils.getAll();
+                        
+                        const hasMigrated = safeLocalStorage.getItem("snapcard_migrated");
+                        const localCardsStr = safeLocalStorage.getItem("snapcard_cards");
+
+                        if (localCardsStr && !hasMigrated) {
+                            try {
+                                const localCards = JSON.parse(localCardsStr);
+                                if (localCards.length > 0) {
+                                    for (const card of localCards) {
+                                        if (!dbCards.find(c => c.id === card.id)) {
+                                            await dbUtils.put(card);
+                                            dbCards.push(card);
+                                        }
+                                    }
+                                    safeLocalStorage.setItem("snapcard_migrated", "true");
+                                }
+                            } catch (e) {
+                                console.error("Migration error", e);
+                            }
+                        }
+                        
                         setCards(dbCards.sort((a, b) => b.id - a.id));
-                    } catch (err) { setError("資料庫讀取失敗"); } 
-                    finally { setIsLoadingDB(false); }
+                    } catch (err) {
+                        console.error("DB Load Error", err);
+                        setError("資料庫讀取失敗");
+                    } finally {
+                        setIsLoadingDB(false);
+                    }
                 };
                 loadCards();
             }, []);
 
             useEffect(() => {
-                const timer = setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 50);
+                const timer = setTimeout(() => {
+                    if (window.lucide) window.lucide.createIcons();
+                }, 50);
                 return () => clearTimeout(timer);
             }, [view, cards.length, resultData, additionalImage, backImage, currentAvatar, filterCategory, showSplash, testStatus]);
 
-            const startScanFlow = () => { setView("scan"); };
-            const handleManualAdd = () => { setResultData({ category: "工作" }); setCapturedImage(null); setBackImage(null); setCurrentAvatar(null); setAdditionalImage(null); setCurrentCardId(null); setView("result"); };
-            const handleScanCapture = (base64) => { setCapturedImage(base64); setView("home"); analyze(base64); };
-            const handleImageUpload = async (e, setter) => { if (e.target.files[0]) { try { const b = await compressImage(e.target.files[0]); setter(b); } catch(err) { alert("圖片處理失敗"); } } };
-            const clearApiKey = () => { setApiKey(""); safeLocalStorage.setItem("snapcard_api_key", ""); setTestStatus("idle"); setTestMessage(""); };
+            const startScanFlow = () => {
+                // 不強制檢查 Key，如果沒有 Key 會轉入本機辨識
+                setView("scan");
+            };
+
+            const handleManualAdd = () => {
+                setResultData({ category: "工作" });
+                setCapturedImage(null);
+                setBackImage(null);
+                setCurrentAvatar(null);
+                setAdditionalImage(null);
+                setCurrentCardId(null);
+                setView("result");
+            };
+
+            const handleScanCapture = (base64) => {
+                setCapturedImage(base64);
+                setView("home"); 
+                analyze(base64);
+            };
+
+            const handleImageUpload = async (e, setter) => {
+                if (e.target.files[0]) {
+                    try {
+                        const base64 = await compressImage(e.target.files[0]);
+                        setter(base64);
+                    } catch(err) { alert("圖片處理失敗"); }
+                }
+            };
+
+            const clearApiKey = () => {
+                setApiKey("");
+                safeLocalStorage.setItem("snapcard_api_key", "");
+                setTestStatus("idle");
+                setTestMessage("");
+            };
 
             // 本機 OCR 解析邏輯
             const analyzeLocal = async (base64) => {
@@ -300,29 +517,30 @@
                         }
                     });
 
-                    // 簡易規則引擎 (Regex & Keyword Matching)
+                    // 規則引擎 (Regex & Keyword Matching)
                     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 1);
                     const parsed = { category: "工作" };
                     
                     const mobileRegex = /(?:\+?886|0)9\d{2}[- ]?\d{3}[- ]?\d{3}/;
                     const phoneRegex = /(?:\+?886|0)\d{1,3}[- ]?\d{6,8}/;
                     const emailRegex = /[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}/;
-                    const urlRegex = /(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/;
-
+                    
                     lines.forEach(line => {
                         if (!parsed.email && emailRegex.test(line)) parsed.email = line.match(emailRegex)[0];
                         else if (!parsed.mobile && mobileRegex.test(line.replace(/-/g,''))) parsed.mobile = line;
-                        else if (!parsed.tel && phoneRegex.test(line) && !line.startsWith("09")) parsed.tel = line; // 簡單區分
+                        else if (!parsed.tel && phoneRegex.test(line) && !line.startsWith("09")) parsed.tel = line;
                         else if (!parsed.company && (line.includes("公司") || line.includes("Inc") || line.includes("Ltd"))) parsed.company = line;
-                        else if (!parsed.jobTitle && (line.includes("理") || line.includes("師") || line.includes("長") || line.includes("專員"))) parsed.jobTitle = line;
-                        else if (!parsed.address && (line.includes("市") || line.includes("縣") || line.includes("路") || line.includes("街"))) parsed.address = line;
+                        else if (!parsed.jobTitle && (line.includes("理") || line.includes("師") || line.includes("長"))) parsed.jobTitle = line;
+                        else if (!parsed.address && (line.includes("市") || line.includes("縣") || line.includes("路"))) parsed.address = line;
                     });
                     
-                    // 沒抓到名字就猜第一行
                     if (!parsed.name && lines.length > 0) parsed.name = lines[0];
 
                     setResultData(parsed);
-                    setBackImage(null); setAdditionalImage(null); setCurrentAvatar(null); setCurrentCardId(null);
+                    setBackImage(null);
+                    setAdditionalImage(null);
+                    setCurrentAvatar(null);
+                    setCurrentCardId(null);
                     setView("result");
                 } catch (e) {
                     setError("本機辨識失敗: " + e.message);
@@ -333,11 +551,12 @@
             };
 
             const tryModels = async (fn) => {
+                // 模型策略：穩定版 -> 實驗版 -> 舊版 -> 專業版
                 const models = [
                     "gemini-1.5-flash",
-                    "gemini-1.5-flash-latest",
-                    "gemini-1.5-flash-001",
+                    "gemini-2.0-flash-exp",
                     "gemini-1.0-pro",
+                    "gemini-1.5-pro",
                     "gemini-pro"
                 ];
                 let errors = [];
@@ -345,46 +564,65 @@
                     try {
                         const cleanKey = apiKey.trim();
                         setStatusMsg(`AI 辨識中 (${model})...`);
-                        const res = await fn(model, cleanKey);
+                        
+                        // 雙軌路徑：先試 v1beta，若 404 則試 v1
+                        let url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
+                        let res = await fn(url, cleanKey);
+                        
+                        if (res.status === 404) {
+                            console.warn(`${model} v1beta 404, trying v1...`);
+                            url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${cleanKey}`;
+                            res = await fn(url, cleanKey);
+                        }
+
                         if (!res.ok) {
                             const d = await res.json().catch(()=>({}));
                             const msg = d.error?.message || res.statusText;
                             errors.push(`${model}: ${res.status}`);
-                            if(res.status===400 && (msg.includes("API key")||msg.includes("INVALID_ARGUMENT"))) throw new Error("API Key 無效 (400)");
+                            
+                            // 400 Key 錯誤直接停止
+                            if(res.status===400 && (msg.includes("API key") || msg.includes("INVALID_ARGUMENT"))) {
+                                throw new Error("API Key 無效 (400)");
+                            }
+                            
                             console.warn(`Model ${model} fail: ${msg}`);
-                            await new Promise(r => setTimeout(r, 800));
+                            await new Promise(r => setTimeout(r, 500));
                             continue;
                         }
                         return { model, data: await res.json() };
-                    } catch(e) { if(e.message.includes("API Key")) throw e; errors.push(`${model}: ${e.message}`); }
+                    } catch(e) {
+                        if(e.message.includes("API Key")) throw e;
+                        errors.push(`${model}: ${e.message}`);
+                    }
                 }
-                throw new Error(`AI 連線全數失敗 (${errors.join(", ")})`);
+                throw new Error(`AI 連線失敗: ${errors.join(", ")}`);
             };
 
             const testConnection = async () => {
                 if(!apiKey) return setTestMessage("請輸入 Key");
                 setTestStatus("testing"); setTestMessage("測試中...");
                 try {
-                    const result = await tryModels((model, key) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-                        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: "Hello" }] }] })
+                    const result = await tryModels((url, key) => fetch(url, {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: "Hi" }] }] })
                     }));
-                    setTestStatus("success"); setTestMessage(`連線成功！(使用模型: ${result.model})`);
+                    setTestStatus("success"); setTestMessage(`連線成功！(使用: ${result.model})`);
                 } catch(e) { setTestStatus("error"); setTestMessage(e.message); }
             };
 
             const analyze = async (base64) => {
                 setIsProcessing(true); setError(null);
                 
-                // 1. 無 Key 模式 -> 直接用 Tesseract
+                // 1. 無 Key 模式
                 if (!apiKey) {
                     await analyzeLocal(base64);
                     return;
                 }
 
-                // 2. 有 Key 模式 -> 嘗試 Gemini
+                // 2. 有 Key 模式 (嘗試 Gemini)
                 try {
                     const prompt = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作","note":""}。規則:1.分mobile/tel/fax 2.company合併中英 3.category[工作,家人,同學,朋友]。無Markdown。`;
-                    const result = await tryModels((model, key) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+                    const result = await tryModels((url, key) => fetch(url, {
                         method: "POST", headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }] }] })
                     }));
@@ -400,30 +638,65 @@
                     setBackImage(null); setAdditionalImage(null); setCurrentAvatar(null); setCurrentCardId(null);
                     setView("result");
                 } catch(e) { 
-                    // AI 失敗時，詢問是否轉本機
-                    if (confirm(`AI 連線失敗：${e.message}\n\n是否改用「本機離線辨識」嘗試？`)) {
+                    // AI 失敗轉本機
+                    if (confirm(`AI 連線失敗：${e.message}\n是否改用本機辨識？`)) {
                         await analyzeLocal(base64);
                     } else {
                         setError(e.message); setView("home"); setIsProcessing(false);
                     }
                 } finally {
-                    if (apiKey && !error) setIsProcessing(false); // 本機模式會在 analyzeLocal 結束
+                    if (apiKey && !error) setIsProcessing(false);
                 }
             };
 
             const saveCard = async () => {
-                const newData = { id: currentCardId || Date.now(), ...resultData, image: capturedImage, backImage: backImage, avatar: currentAvatar, additionalImage: additionalImage, category: resultData.category||"工作" };
-                await dbUtils.put(newData);
-                const d = await dbUtils.getAll(); setCards(d.sort((a,b)=>b.id-a.id));
-                setView("home");
+                const newData = { id: currentCardId || Date.now(), ...resultData, image: capturedImage, backImage: backImage, avatar: currentAvatar, additionalImage: additionalImage, category: resultData.category || "工作" };
+                try {
+                    await dbUtils.put(newData);
+                    if (currentCardId) setCards(prev => prev.map(c => c.id === currentCardId ? newData : c));
+                    else setCards(prev => [newData, ...prev]);
+                    setView("home");
+                } catch (e) { alert("儲存失敗: " + e.message); }
             };
+
             const handleDeleteCard = async (id, e) => {
-                e.stopPropagation(); if(confirm("刪除?")) { await dbUtils.delete(id); setCards(prev => prev.filter(c => c.id !== id)); }
+                e.stopPropagation();
+                if(confirm("確定要刪除這張名片嗎？")) {
+                    try { await dbUtils.delete(id); setCards(prev => prev.filter(c => c.id !== id)); } catch (e) { alert("刪除失敗"); }
+                }
             };
+
+            const viewSavedCard = (card) => {
+                const data = {...card};
+                if (data.phone && !data.mobile && !data.tel) { if (data.phone.startsWith("09")) data.mobile = data.phone; else data.tel = data.phone; }
+                setResultData(data); setCapturedImage(card.image); setBackImage(card.backImage || null); setCurrentAvatar(card.avatar); setAdditionalImage(card.additionalImage || null); setCurrentCardId(card.id);
+                setView("result");
+            };
+
+            const filteredCards = useMemo(() => {
+                let result = filterCategory === "全部" ? cards : cards.filter(c => c.category === filterCategory);
+                if (searchQuery) {
+                    const q = searchQuery.toLowerCase();
+                    result = result.filter(c => (c.name && c.name.toLowerCase().includes(q)) || (c.company && c.company.toLowerCase().includes(q)));
+                }
+                return result.sort((a, b) => {
+                    const companyA = (a.company || "").toLowerCase();
+                    const companyB = (b.company || "").toLowerCase();
+                    return companyA.localeCompare(companyB, "zh-Hant");
+                });
+            }, [cards, filterCategory, searchQuery]);
+
             const exportData = () => {
-                const blob = new Blob([JSON.stringify(cards,null,2)], {type:"application/json"});
-                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = "snapcard_backup.json"; a.click();
+                if (cards.length === 0) { alert("無資料可匯出"); return; }
+                const dataStr = JSON.stringify(cards, null, 2);
+                const blob = new Blob([dataStr], { type: "application/octet-stream" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url; link.download = `snapcard_backup_${new Date().toISOString().slice(0,10)}.json`;
+                document.body.appendChild(link); link.click();
+                setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
             };
+
             const importData = (e) => {
                 const file = e.target.files[0]; if(!file)return;
                 const r = new FileReader(); r.onload=async(ev)=>{
@@ -431,8 +704,11 @@
                     const all = await dbUtils.getAll(); setCards(all.sort((a,b)=>b.id-a.id)); alert("匯入成功"); } catch{alert("格式錯誤");}
                 }; r.readAsText(file); e.target.value='';
             };
+
             const clearAllData = async () => {
-                if(confirm("確定清空?")) { try { await dbUtils.clear(); setCards([]); safeLocalStorage.removeItem("snapcard_cards"); alert("已清空"); } catch (e) { alert("失敗"); } }
+                if(confirm("警告：這將刪除所有資料。確定嗎？")) {
+                    try { await dbUtils.clear(); setCards([]); safeLocalStorage.removeItem("snapcard_cards"); alert("已清空"); } catch (e) { alert("失敗"); }
+                }
             };
 
             if (showSplash) {
@@ -486,9 +762,10 @@
                                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                     <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Icon name="key" className="text-blue-500"/> API 設定</h3>
                                     <div style={{height:0,overflow:'hidden'}}><input type="text" /><input type="password" /></div>
-                                    <div className="relative">
-                                        <input type="password" autoComplete="off" readOnly onFocus={e=>e.target.removeAttribute('readonly')} name={randomInputName} value={apiKey} onChange={e=>{setApiKey(e.target.value);safeLocalStorage.setItem("snapcard_api_key",e.target.value);}} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm pr-10 focus:outline-none" placeholder="AIzaSy..." />
-                                        {apiKey && <button onClick={clearApiKey} className="absolute right-3 top-3 text-gray-400"><Icon name="x" size={16}/></button>}
+                                    <div className="relative mb-4">
+                                        <label className="text-xs text-gray-500 block mb-1">Google API Key</label>
+                                        <input type="password" autoComplete="off" readOnly onFocus={e=>e.target.removeAttribute('readonly')} name={randomInputName} value={apiKey} onChange={e=>{setApiKey(e.target.value);safeLocalStorage.setItem("snapcard_api_key",e.target.value);}} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-blue-100" placeholder="AIzaSy..." />
+                                        {apiKey && <button onClick={clearApiKey} className="absolute right-3 top-8 text-gray-400 hover:text-red-500"><Icon name="x" size={16}/></button>}
                                     </div>
                                     <div className="flex gap-2 mt-2">
                                         <button onClick={testConnection} disabled={testStatus==="testing"} className={`flex-1 py-2 rounded-lg text-sm font-bold ${testStatus==="success"?"bg-green-100 text-green-700":testStatus==="error"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}>{testStatus==="testing"?"測試中...":testStatus==="success"?"測試成功":"測試連線"}</button>
@@ -504,7 +781,7 @@
                                         <button onClick={clearAllData} className="w-full flex justify-between p-3 bg-red-50 text-red-600 rounded-xl"><span>清空資料</span><Icon name="trash" size={18}/></button>
                                     </div>
                                 </div>
-                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 5.2 (Local OCR)</div>
+                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 7.0 (Hybrid Engine)</div>
                                 <button onClick={()=>setView("home")} className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4">返回</button>
                             </div>
                         )}
