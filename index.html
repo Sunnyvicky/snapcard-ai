@@ -13,7 +13,6 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 使用 Lucide Global 版本 -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         body { background-color: #f8fafc; color: #1e293b; margin: 0; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
@@ -63,21 +62,20 @@
         }
 
         const Icon = ({ name, size = 20, className = "" }) => {
-            const [svgContent, setSvgContent] = useState("");
-            
+            const ref = useRef(null);
             useEffect(() => {
-                if (window.lucide && window.lucide.icons && window.lucide.icons[name]) {
-                    const svgString = window.lucide.icons[name].toSVG({
-                        width: size,
-                        height: size,
-                        class: className
-                    });
-                    setSvgContent(svgString);
-                }
+                if (!ref.current || !window.lucide) return;
+                ref.current.innerHTML = ''; // 淨空內部，避免 React DOM 衝突
+                const i = document.createElement('i');
+                i.setAttribute('data-lucide', name);
+                if(className) i.setAttribute('class', className);
+                ref.current.appendChild(i);
+                window.lucide.createIcons({
+                    root: ref.current,
+                    attrs: { width: size, height: size }
+                });
             }, [name, size, className]);
-
-            if (!svgContent) return <span style={{width: size, height: size, display: 'inline-block'}} className={className}></span>;
-            return <span dangerouslySetInnerHTML={{ __html: svgContent }} style={{ display: 'inline-flex', alignItems: 'center' }} />;
+            return <span ref={ref} className="inline-flex items-center justify-center"></span>;
         };
 
         const compressImage = (file) => new Promise((res,rej)=>{
@@ -103,12 +101,43 @@
             
             const capture = () => { 
                 if(!vRef.current)return; 
-                const v = vRef.current; 
-                const c = document.createElement("canvas"); 
-                c.width = v.videoWidth; 
-                c.height = v.videoHeight; 
-                c.getContext('2d').drawImage(v,0,0); 
-                onCapture(c.toDataURL("image/jpeg",0.8)); 
+                const video = vRef.current; 
+                const canvas = document.createElement("canvas"); 
+                
+                // 所見即所得：精確計算並裁切掃描框內的影像
+                const videoRatio = video.videoWidth / video.videoHeight;
+                const displayRatio = video.clientWidth / video.clientHeight;
+                let sWidth = video.videoWidth;
+                let sHeight = video.videoHeight;
+                let sx = 0;
+                let sy = 0;
+                
+                if (videoRatio > displayRatio) {
+                    sWidth = video.videoHeight * displayRatio;
+                    sx = (video.videoWidth - sWidth) / 2;
+                } else {
+                    sHeight = video.videoWidth / displayRatio;
+                    sy = (video.videoHeight - sHeight) / 2;
+                }
+                
+                const frameW = sWidth * 0.75;
+                const frameH = frameW / 1.6;
+                const frameX = sx + (sWidth - frameW) / 2;
+                const frameY = sy + (sHeight - frameH) / 2;
+                
+                const MAX_DIM = 1200;
+                let destW = frameW;
+                let destH = frameH;
+                if (destW > MAX_DIM || destH > MAX_DIM) {
+                    const scale = Math.min(MAX_DIM / destW, MAX_DIM / destH);
+                    destW *= scale;
+                    destH *= scale;
+                }
+                
+                canvas.width = destW; 
+                canvas.height = destH; 
+                canvas.getContext('2d').drawImage(video, frameX, frameY, frameW, frameH, 0, 0, destW, destH); 
+                onCapture(canvas.toDataURL("image/jpeg", 0.8)); 
             };
 
             return (
@@ -152,7 +181,7 @@
             const [searchQuery, setSearchQuery] = useState("");
             
             const [apiKey, setApiKey] = useState("");
-            const [selectedModel, setSelectedModel] = useState("");
+            const [selectedModel, setSelectedModel] = useState("gemini-1.5-flash"); // 預設推薦
             const [availableModels, setAvailableModels] = useState([]);
             
             const [testStatus, setTestStatus] = useState("idle"); 
@@ -170,7 +199,7 @@
             useEffect(() => { const l=async()=>{ try{const d=await dbUtils.getAll(); setCards(d.sort((a,b)=>b.id-a.id));}catch(e){} }; l(); }, []);
 
             const startScanFlow = () => { if (!apiKey) { setView("settings"); return; } setView("scan"); };
-            const handleManualAdd = () => { setResultData({ category: "工作" }); setCapturedImage(null); setBackImage(null); setCurrentAvatar(null); setAdditionalImage(null); setCurrentCardId(null); setView("result"); };
+            const handleManualAdd = () => { setResultData({ category: "工作-客戶" }); setCapturedImage(null); setBackImage(null); setCurrentAvatar(null); setAdditionalImage(null); setCurrentCardId(null); setView("result"); };
             const handleScanCapture = (base64) => { setCapturedImage(base64); setView("home"); analyze(base64); };
             const handleImageUpload = async (e, setter) => { if (e.target.files[0]) { try { const b = await compressImage(e.target.files[0]); setter(b); } catch(err) { alert("圖片處理失敗"); } } };
             
@@ -180,54 +209,10 @@
                 setTestStatus("idle"); 
                 setTestMessage(""); 
                 setAvailableModels([]);
-                setSelectedModel("");
+                setSelectedModel("gemini-1.5-flash");
             };
 
             const sanitizeKey = (k) => k.trim().replace(/[\r\n\s]/g, '');
-
-            // [重要修正] 移除 429 傻等邏輯，改為瞬間回傳交給外層作模型降級切換
-            const fetchWithRetry = async (url, options) => {
-                // 這裡只針對嚴重的網路斷線或 500 錯誤作輕量重試，遇到 429 則「秒回」
-                const delays = [1000, 2000]; 
-                for (let i = 0; i <= delays.length; i++) {
-                    try {
-                        const res = await fetch(url, options);
-                        // 遇到 429 (頻率限制) 不等了，立刻返回，讓外層瞬間切換下一個模型
-                        if (res.status === 429) {
-                            return res; 
-                        }
-                        if (!res.ok && res.status >= 500 && i < delays.length) {
-                            await new Promise(resolve => setTimeout(resolve, delays[i]));
-                            continue;
-                        }
-                        return res; 
-                    } catch (err) {
-                        if (i === delays.length) throw err;
-                        await new Promise(resolve => setTimeout(resolve, delays[i]));
-                    }
-                }
-            };
-
-            const getUsableModels = async (cleanKey) => {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`;
-                const res = await fetchWithRetry(url, { method: 'GET' });
-                
-                if (!res.ok) {
-                    const err = await res.json().catch(()=>({}));
-                    throw new Error(`[${res.status}] ${err.error?.message || res.statusText}`);
-                }
-                
-                const data = await res.json();
-                if (!data.models) throw new Error("API 回傳格式異常");
-
-                const usable = data.models
-                    .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"))
-                    .filter(m => m.name.includes("gemini"))
-                    .map(m => m.name.replace("models/", ""));
-                
-                if (usable.length === 0) throw new Error("此 Key 無法存取任何 Gemini 模型");
-                return usable;
-            };
 
             const fetchModelsAndTest = async () => {
                 if(!apiKey) return setTestMessage("請輸入 Key");
@@ -235,17 +220,28 @@
                 
                 try {
                     const cleanKey = sanitizeKey(apiKey);
-                    const usableModels = await getUsableModels(cleanKey);
-                    setAvailableModels(usableModels);
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`;
+                    // 測試連線不重試，直接看結果
+                    const res = await fetch(url, { method: 'GET' });
                     
-                    let bestModel = usableModels.find(m => m.includes("gemini-3.0")) ||
-                                    usableModels.find(m => m.includes("gemini-2.0")) || 
-                                    usableModels.find(m => m.includes("gemini-1.5-flash")) ||
-                                    usableModels[0];
+                    if (!res.ok) {
+                        const err = await res.json().catch(()=>({}));
+                        throw new Error(`[${res.status}] ${err.error?.message || res.statusText}`);
+                    }
                     
-                    setSelectedModel(bestModel);
+                    const data = await res.json();
+                    if (!data.models) throw new Error("API 回傳格式異常");
+
+                    const usable = data.models
+                        .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"))
+                        .filter(m => m.name.includes("gemini"))
+                        .map(m => m.name.replace("models/", ""));
+                    
+                    if (usable.length === 0) throw new Error("此 Key 無法存取任何 Gemini 模型");
+                    
+                    setAvailableModels(usable);
                     setTestStatus("success"); 
-                    setTestMessage(`驗證成功！已自動偵測最新模型：${bestModel}`);
+                    setTestMessage(`驗證成功！可使用模型數：${usable.length}`);
                     
                 } catch(e) { 
                     setTestStatus("error"); 
@@ -253,6 +249,7 @@
                 }
             };
 
+            // 【完全零延遲・暴力瀑布流降級機制】
             const analyze = async (base64) => {
                 setIsProcessing(true); setError(null);
                 
@@ -261,49 +258,38 @@
                 }
 
                 const cleanKey = sanitizeKey(apiKey);
-                let actualModels = availableModels;
 
                 try {
-                    if (actualModels.length === 0) {
-                        setStatusMsg("正在向 Google 確認授權模型...");
-                        actualModels = await getUsableModels(cleanKey);
-                        setAvailableModels(actualModels);
-                        
-                        let bestModel = actualModels.find(m => m.includes("gemini-3.0")) ||
-                                        actualModels.find(m => m.includes("gemini-2.0")) || 
-                                        actualModels.find(m => m.includes("gemini-1.5-flash")) ||
-                                        actualModels[0];
-                        setSelectedModel(bestModel);
-                    }
-
+                    // 建立防彈備援名單
+                    const baseFallbackModels = ["gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-pro"];
                     let modelsToTry = [];
-                    const target = selectedModel || actualModels.find(m => m.includes("gemini-3.0")) || actualModels.find(m => m.includes("gemini-2.0")) || actualModels.find(m => m.includes("gemini-1.5-flash")) || actualModels[0];
                     
-                    if (target && actualModels.includes(target)) {
-                        modelsToTry.push(target);
-                    }
+                    // 優先放入使用者選定的模型
+                    if (selectedModel) modelsToTry.push(selectedModel);
                     
-                    const sortedModels = [...actualModels].sort((a, b) => {
-                        const scoreA = a.includes("3.0") ? 3 : (a.includes("2.0") ? 2 : (a.includes("1.5") ? 1 : 0));
-                        const scoreB = b.includes("3.0") ? 3 : (b.includes("2.0") ? 2 : (b.includes("1.5") ? 1 : 0));
-                        return scoreB - scoreA;
+                    // 放入動態偵測到的模型
+                    availableModels.forEach(m => {
+                        if (!modelsToTry.includes(m)) modelsToTry.push(m);
                     });
                     
-                    for (const m of sortedModels) {
+                    // 確保一定有安全備援打底
+                    baseFallbackModels.forEach(m => {
                         if (!modelsToTry.includes(m)) modelsToTry.push(m);
-                    }
+                    });
 
                     let lastError = "";
                     let successJson = null;
-                    const prompt = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作","note":""}。規則:1.分mobile/tel/fax 2.company合併中英 3.category[工作,家人,同學,朋友]。無Markdown。`;
+                    const prompt = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作-客戶","note":""}。規則:1.分mobile/tel/fax 2.company合併中英 3.category[工作-客戶,工作-廠商,家人,朋友]。無Markdown。`;
                     const imagePart = { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } };
 
+                    // 迴圈：瞬間測試所有模型，遇到 429 或網路錯誤 絕對不等待，0 毫秒跳下一個！
                     for (const model of modelsToTry) {
                         setStatusMsg(`AI 辨識中 (${model})...`);
                         try {
                             const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
                             
-                            const res = await fetchWithRetry(url, {
+                            // 這裡直接使用原生 fetch，沒有任何 Delay 邏輯！
+                            const res = await fetch(url, {
                                 method: "POST", 
                                 headers: { "Content-Type": "application/json" },
                                 referrerPolicy: "no-referrer",
@@ -314,44 +300,45 @@
                                 const err = await res.json().catch(()=>({}));
                                 const errMsg = err.error?.message || res.statusText;
                                 
+                                // 只有 Key 無效這種致命錯誤才拋出中斷
                                 if (res.status === 400 && (errMsg.includes("API key") || errMsg.includes("INVALID_ARGUMENT"))) {
-                                    throw new Error("API Key 無效，請確認");
+                                    throw new Error("API Key 無效，請檢查設定");
                                 }
                                 
-                                // [重要修正] 遇到 429 不等了，瞬間切換備用模型
-                                if (res.status === 429) {
-                                    console.warn(`[${model}] 頻率受限 (429)，瞬間切換下一個授權模型...`);
-                                    lastError = "免費額度或頻率受限";
-                                    continue; 
-                                }
-                                if (res.status === 404) {
-                                    console.warn(`[${model}] 尚不支援 (404)，切換下一個...`);
-                                    lastError = "模型無權限";
-                                    continue;
-                                }
-                                
-                                throw new Error(`${res.status} ${errMsg}`);
+                                console.warn(`[${model}] 失敗 (${res.status})，瞬間跳過...`);
+                                lastError = `[${res.status}] ${errMsg}`;
+                                continue; // 核心：瞬間跳過，嘗試下一個！
                             }
 
-                            successJson = await res.json();
-                            break; 
+                            const json = await res.json();
+                            let text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+                            if(!text) {
+                                lastError = "模型回傳空白內容";
+                                continue;
+                            }
+                            
+                            text = text.replace(/```json|```/g, '').trim();
+                            const start = text.indexOf('{'), end = text.lastIndexOf('}');
+                            if (start === -1 || end === -1) {
+                                lastError = "JSON 格式解析錯誤";
+                                continue;
+                            }
+                            
+                            successJson = JSON.parse(text.substring(start, end + 1));
+                            break; // 成功！終止迴圈
 
                         } catch(e) {
                             if (e.message.includes("API Key")) throw e;
                             lastError = e.message;
+                            // 遇到網路或 CORS 錯誤，直接跳下一個，絕不卡頓
                         }
                     }
 
-                    if (!successJson) throw new Error(`所有可用模型皆忙碌或無法連線 (${lastError})。請稍候再試。`);
-
-                    let text = successJson.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if(!text) throw new Error("AI 未回傳內容");
+                    if (!successJson) {
+                        throw new Error(`所有模型皆忙碌或達到額度上限 (${lastError})。請稍等一分鐘後再試。`);
+                    }
                     
-                    text = text.replace(/```json|```/g, '').trim();
-                    const start = text.indexOf('{'), end = text.lastIndexOf('}');
-                    const data = JSON.parse(text.substring(start, end + 1));
-                    
-                    setResultData(data || { category: "工作" });
+                    setResultData(successJson || { category: "工作-客戶" });
                     setBackImage(null); setAdditionalImage(null); setCurrentAvatar(null); setCurrentCardId(null);
                     setView("result");
 
@@ -364,7 +351,7 @@
             };
 
             const saveCard = async () => {
-                const newData = { id: currentCardId || Date.now(), ...resultData, image: capturedImage, backImage: backImage, avatar: currentAvatar, additionalImage: additionalImage, category: resultData.category||"工作" };
+                const newData = { id: currentCardId || Date.now(), ...resultData, image: capturedImage, backImage: backImage, avatar: currentAvatar, additionalImage: additionalImage, category: resultData.category||"工作-客戶" };
                 await dbUtils.put(newData);
                 const d = await dbUtils.getAll(); setCards(d.sort((a,b)=>b.id-a.id));
                 setView("home");
@@ -386,6 +373,10 @@
             const clearAllData = async () => {
                 if(confirm("確定清空?")) { try { await dbUtils.clear(); setCards([]); safeLS.removeItem("snapcard_cards"); alert("已清空"); } catch (e) { alert("失敗"); } }
             };
+
+            // 整合顯示下拉選單的選項
+            const baseModels = ["gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-1.5-pro"];
+            const dropdownModels = [...new Set([...baseModels, ...availableModels])];
 
             if (showSplash) {
                 return (
@@ -418,7 +409,7 @@
                                     {searchQuery && <button onClick={()=>setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2"><Icon name="x" size={14}/></button>}
                                 </div>
                                 <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar">
-                                    {["全部", "工作", "家人", "同學", "朋友"].map(c => (
+                                    {["全部", "工作-客戶", "工作-廠商", "家人", "朋友"].map(c => (
                                         <button key={c} onClick={()=>setFilterCategory(c)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${filterCategory===c?"bg-blue-600 text-white":"bg-white text-gray-500 border border-gray-100"}`}>{c}</button>
                                     ))}
                                 </div>
@@ -446,19 +437,17 @@
                                     </div>
                                     <p className="text-[10px] text-gray-400 mb-4 ml-1">✨ 貼上 Key 即可直接返回首頁掃描，無需點擊測試</p>
 
-                                    {availableModels.length > 0 && (
-                                        <div className="mb-4">
-                                            <label className="text-xs text-gray-500 block mb-1">自動鎖定為最新可用模型</label>
-                                            <select value={selectedModel} onChange={e=>setSelectedModel(e.target.value)} className="w-full bg-green-50 border border-green-200 text-green-700 rounded-lg p-3 text-sm focus:outline-none">
-                                                {availableModels.map(m => (
-                                                    <option key={m} value={m}>{m}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
+                                    <div className="mb-4">
+                                        <label className="text-xs text-gray-500 block mb-1">優先使用模型 (遇到限制會自動瞬間降級)</label>
+                                        <select value={selectedModel} onChange={e=>setSelectedModel(e.target.value)} className="w-full bg-green-50 border border-green-200 text-green-700 rounded-lg p-3 text-sm focus:outline-none">
+                                            {dropdownModels.map(m => (
+                                                <option key={m} value={m}>{m} {m === 'gemini-1.5-flash' ? '(推薦, 高額度15次/分)' : (m.includes('2.0') ? '(實驗, 2次/分)' : '')}</option>
+                                            ))}
+                                        </select>
+                                    </div>
 
                                     <div className="flex gap-2">
-                                        <button onClick={fetchModelsAndTest} disabled={testStatus==="testing"} className={`flex-1 py-2 rounded-lg text-sm font-bold ${testStatus==="success"?"bg-green-100 text-green-700":testStatus==="error"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}>{testStatus==="testing"?"偵測中...":testStatus==="success"?"偵測成功":"偵測可用模型"}</button>
+                                        <button onClick={fetchModelsAndTest} disabled={testStatus==="testing"} className={`flex-1 py-2 rounded-lg text-sm font-bold ${testStatus==="success"?"bg-green-100 text-green-700":testStatus==="error"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}>{testStatus==="testing"?"偵測中...":testStatus==="success"?"偵測成功":"偵測可用模型清單"}</button>
                                         <button onClick={()=>window.open("https://aistudio.google.com/app/apikey")} className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg text-sm font-bold">取得 Key</button>
                                     </div>
                                     {testMessage && <div className={`text-xs mt-2 p-2 rounded ${testStatus==="error"?"text-red-600 bg-red-50":"text-green-600 bg-green-50"}`}>{testMessage}</div>}
@@ -471,7 +460,7 @@
                                         <button onClick={clearAllData} className="w-full flex justify-between p-3 bg-red-50 text-red-600 rounded-xl"><span>清空資料</span><Icon name="trash" size={18}/></button>
                                     </div>
                                 </div>
-                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 14.0 (Seamless Waterfall)</div>
+                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 15.0 (Zero-Delay Waterfall)</div>
                                 <button onClick={()=>setView("home")} className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4">返回</button>
                             </div>
                         )}
@@ -512,7 +501,7 @@
                                             return (
                                                 <div key={f.k} className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl relative">
                                                     {href ? (
-                                                        <a href={href} target={target} className="text-blue-500 hover:text-blue-700 active:text-blue-800 transition-colors z-10 flex-shrink-0 cursor-pointer p-1">
+                                                        <a href={href} target={target} className="text-blue-500 hover:text-blue-700 active:text-blue-800 transition-colors z-10 flex-shrink-0 cursor-pointer p-2 -m-2">
                                                             <Icon name={f.i} size={18}/>
                                                         </a>
                                                     ) : (
@@ -522,7 +511,7 @@
                                                 </div>
                                             );
                                         })}
-                                        <div className="flex gap-2 py-2">{["工作","家人","同學","朋友"].map(c=><button key={c} onClick={()=>setResultData({...resultData,category:c})} className={`flex-1 py-2 text-xs rounded-lg font-bold border ${resultData.category===c?"bg-blue-50 border-blue-200 text-blue-600":"border-gray-100"}`}>{c}</button>)}</div>
+                                        <div className="flex gap-2 py-2">{["工作-客戶","工作-廠商","家人","朋友"].map(c=><button key={c} onClick={()=>setResultData({...resultData,category:c})} className={`flex-1 py-2 text-[11px] rounded-lg font-bold border ${resultData.category===c?"bg-blue-50 border-blue-200 text-blue-600":"border-gray-100"}`}>{c}</button>)}</div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="relative aspect-video bg-gray-50 rounded-xl flex items-center justify-center border border-dashed" onClick={()=>document.getElementById('bu').click()}>{backImage?<img src={backImage} className="w-full h-full object-cover"/>:<span className="text-xs text-gray-400">背面</span>}<input id="bu" type="file" className="hidden" onChange={e=>handleImageUpload(e,setBackImage)}/></div>
                                             <div className="relative aspect-video bg-gray-50 rounded-xl flex items-center justify-center border border-dashed" onClick={()=>document.getElementById('au').click()}>{additionalImage?<img src={additionalImage} className="w-full h-full object-cover"/>:<span className="text-xs text-gray-400">附件</span>}<input id="au" type="file" className="hidden" onChange={e=>handleImageUpload(e,setAdditionalImage)}/></div>
@@ -541,9 +530,19 @@
 
                     {view === "home" && (
                         <div className="absolute bottom-6 left-0 w-full flex justify-center z-20 pointer-events-none">
-                            <div className="flex items-center gap-6 bg-white px-6 py-3 rounded-full shadow-lg pointer-events-auto border border-gray-100">
-                                <button onClick={startScanFlow} className="relative -top-6"><div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg transform rotate-3 hover:rotate-6 transition-transform border-4 border-white"><Icon name="scan-line" size={32} className="text-white"/></div></button>
-                                <button onClick={handleManualAdd} className="flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600"><div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center"><Icon name="edit" size={20}/></div><span className="text-[10px] font-bold">手動</span></button>
+                            <div className="flex items-center gap-8 bg-white/90 backdrop-blur-md px-8 py-3 rounded-full shadow-2xl pointer-events-auto border border-gray-100/50">
+                                <button onClick={startScanFlow} className="relative -top-8 group flex flex-col items-center">
+                                    <div className="w-16 h-16 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-full flex items-center justify-center shadow-[0_8px_20px_rgb(37,99,235,0.4)] border-4 border-white group-active:scale-95 transition-all">
+                                        <Icon name="camera" size={28} className="text-white"/>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-blue-700 mt-1 absolute -bottom-5">掃描名片</span>
+                                </button>
+                                <button onClick={handleManualAdd} className="flex flex-col items-center gap-1.5 text-gray-400 hover:text-blue-600 group active:scale-95 transition-transform">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-gray-50 to-gray-100 shadow-inner border border-gray-200 flex items-center justify-center group-hover:border-blue-200 group-hover:bg-blue-50">
+                                        <Icon name="pen-tool" size={18} className="text-gray-500 group-hover:text-blue-600"/>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-gray-500 group-hover:text-blue-600">手動輸入</span>
+                                </button>
                             </div>
                         </div>
                     )}
