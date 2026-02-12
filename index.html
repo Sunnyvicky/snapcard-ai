@@ -104,7 +104,6 @@
                 const video = vRef.current; 
                 const canvas = document.createElement("canvas"); 
                 
-                // 所見即所得：精確計算並裁切掃描框內的影像
                 const videoRatio = video.videoWidth / video.videoHeight;
                 const displayRatio = video.clientWidth / video.clientHeight;
                 let sWidth = video.videoWidth;
@@ -191,7 +190,6 @@
             
             const randomInputName = useMemo(() => `s_${Math.random().toString(36).slice(2)}`, []);
 
-            // 排序函式: 依序使用 公司名稱(A-Z) -> 姓名(A-Z) -> 建立時間(新到舊)
             const sortCardsList = (cardsArray) => {
                 return [...cardsArray].sort((a, b) => {
                     const compA = (a.company || "").toString().toLowerCase();
@@ -273,7 +271,7 @@
 
                 const usable = data.models
                     .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"))
-                    .filter(m => m.name.includes("gemini") && !m.name.includes("1.5")) // 排除 1.5 版本
+                    .filter(m => m.name.includes("gemini") && !m.name.includes("1.5")) 
                     .map(m => m.name.replace("models/", ""));
                 
                 if (usable.length === 0) throw new Error("此 Key 無法存取 Gemini 2.0/3.0 模型");
@@ -522,7 +520,7 @@
                                         <label className="w-full flex justify-between p-3 bg-gray-50 rounded-xl text-gray-700 cursor-pointer"><span>匯入</span><Icon name="download" size={18}/><input type="file" accept=".json" onChange={importData} className="hidden"/></label>
                                     </div>
                                 </div>
-                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 15.0</div>
+                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 15.1</div>
                                 <button onClick={()=>setView("home")} className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4">返回</button>
                             </div>
                         )}
@@ -576,9 +574,9 @@
                                             );
                                         })}
                                         <div className="flex gap-2 py-2">{["工作-客戶","工作-廠商","家人","朋友"].map(c=><button key={c} onClick={()=>setResultData({...resultData,category:c})} className={`flex-1 py-2 text-[11px] rounded-lg font-bold border ${resultData.category===c?"bg-blue-50 border-blue-200 text-blue-600":"border-gray-100"}`}>{c}</button>)}</div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="relative aspect-video bg-gray-50 rounded-xl flex items-center justify-center border border-dashed" onClick={()=>document.getElementById('bu').click()}>{backImage?<img src={backImage} className="w-full h-full object-cover"/>:<span className="text-xs text-gray-400">背面</span>}<input id="bu" type="file" className="hidden" onChange={e=>handleImageUpload(e,setBackImage)}/></div>
-                                            <div className="relative aspect-video bg-gray-50 rounded-xl flex items-center justify-center border border-dashed" onClick={()=>document.getElementById('au').click()}>{additionalImage?<img src={additionalImage} className="w-full h-full object-cover"/>:<span className="text-xs text-gray-400">附件</span>}<input id="au" type="file" className="hidden" onChange={e=>handleImageUpload(e,setAdditionalImage)}/></div>
+                                        <textarea value={resultData.note||""} onChange={e=>setResultData({...resultData,note:e.target.value})} placeholder="新增備註..." rows="3" className="w-full bg-gray-50 border border-transparent rounded-xl p-3 text-sm focus:outline-none focus:ring-1 focus:ring-blue-200 resize-none"></textarea>
+                                        <div className="grid grid-cols-1 gap-3">
+                                            <div className="relative aspect-[21/9] bg-gray-50 rounded-xl flex items-center justify-center border border-dashed" onClick={()=>document.getElementById('au').click()}>{additionalImage?<img src={additionalImage} className="w-full h-full object-cover"/>:<span className="text-xs text-gray-400">附件照片</span>}<input id="au" type="file" className="hidden" onChange={e=>handleImageUpload(e,setAdditionalImage)}/></div>
                                         </div>
                                     </div>
                                     <div className="flex gap-3 pt-4 pb-20">
