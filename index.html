@@ -62,26 +62,22 @@
             render(){ if(this.state.hasError)return <div className="h-screen flex flex-col items-center justify-center p-4 text-red-600"><h3>App 發生錯誤</h3><p className="text-xs mb-4">{this.state.error?.message}</p><button onClick={()=>{localStorage.clear();window.location.reload()}} className="bg-gray-200 px-4 py-2 rounded">重置並重整</button></div>; return this.props.children; }
         }
 
-        const Icon = ({name, size=20, className=""}) => {
-            const [svgHtml, setSvgHtml] = useState("");
-            
+        // [修正] 恢復原版穩定的 Icon 渲染方式
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const ref = useRef(null);
             useEffect(() => {
-                if (window.lucide && window.lucide.icons && window.lucide.icons[name]) {
-                    const svg = window.lucide.icons[name].toSVG({
-                        width: size,
-                        height: size,
-                        class: className
-                    });
-                    setSvgHtml(svg);
-                } else if (window.lucide) {
-                    const i = document.createElement('i');
-                    i.setAttribute('data-lucide', name);
-                    window.lucide.createIcons({root: i, attrs: {width:size, height:size, class:className}});
-                    setSvgHtml(i.innerHTML);
-                }
+                if (!ref.current || !window.lucide) return;
+                const container = ref.current;
+                container.innerHTML = '';
+                const i = document.createElement('i');
+                i.setAttribute('data-lucide', name);
+                container.appendChild(i);
+                window.lucide.createIcons({
+                    root: container,
+                    attrs: { width: size, height: size, class: className }
+                });
             }, [name, size, className]);
-
-            return <span style={{display:'inline-flex', alignItems:'center'}} dangerouslySetInnerHTML={{__html: svgHtml}} />;
+            return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center' }}></span>;
         };
 
         const compressImage = (file) => new Promise((res,rej)=>{
@@ -89,31 +85,53 @@
             i.onload=()=>{ URL.revokeObjectURL(u); const c=document.createElement('canvas'); const m=1200; let w=i.width,h=i.height; if(w>h){if(w>m){h*=m/w;w=m;}}else{if(h>m){w*=m/h;h=m;}} c.width=w; c.height=h; const ctx=c.getContext('2d'); ctx.drawImage(i,0,0,w,h); res(c.toDataURL('image/jpeg',0.8)); }; i.onerror=rej;
         });
 
+        // [修正] 恢復完整的相機 UI (定位框、半透明遮罩、底部控制列)
         const CameraScanner = ({onCapture,onCancel}) => {
-            const vRef=useRef(null);
+            const vRef = useRef(null);
+            const [error, setError] = useState(null);
+            
             useEffect(()=>{ 
-                let s=null; 
+                let s = null; 
                 const init = async () => {
                     try {
-                        s = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+                        s = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment", width: { ideal: 1920 }, height: { ideal: 1080 }}});
                         if(vRef.current) { vRef.current.srcObject=s; vRef.current.play().catch(console.error); }
-                    } catch(e) { alert("相機錯誤: "+e.message); }
+                    } catch(e) { setError("相機錯誤: "+e.message); }
                 };
                 init();
                 return ()=>s?.getTracks().forEach(t=>t.stop()); 
             },[]);
             
-            const capture=()=>{ 
-                if(!vRef.current)return; const v=vRef.current; const c=document.createElement("canvas"); 
-                c.width=v.videoWidth; c.height=v.videoHeight; 
+            const capture = () => { 
+                if(!vRef.current)return; 
+                const v = vRef.current; 
+                const c = document.createElement("canvas"); 
+                c.width = v.videoWidth; 
+                c.height = v.videoHeight; 
                 c.getContext('2d').drawImage(v,0,0); 
                 onCapture(c.toDataURL("image/jpeg",0.8)); 
             };
+
             return (
                 <div className="fixed inset-0 bg-black z-50 flex flex-col">
-                    <video ref={vRef} playsInline muted autoPlay className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="w-3/4 aspect-[1.6/1] border-2 border-blue-500 rounded-xl relative"><div className="scan-line"></div></div></div>
-                    <div className="absolute bottom-0 w-full h-32 flex items-center justify-center gap-12 pb-6 bg-gradient-to-t from-black/80 to-transparent z-50">
+                    <div className="flex-1 relative overflow-hidden">
+                        <video ref={vRef} playsInline muted autoPlay className="w-full h-full object-cover" />
+                        {error && <div className="absolute inset-0 flex items-center justify-center text-white bg-black/80">{error}</div>}
+                        
+                        {/* 掃描框與半透明遮罩 */}
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                            <div className="w-3/4 aspect-[1.6/1] border-2 border-blue-500 rounded-xl relative shadow-[0_0_0_999px_rgba(0,0,0,0.5)] overflow-hidden">
+                                <div className="scan-line"></div>
+                                <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-blue-500 -mt-1 -ml-1"></div>
+                                <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-blue-500 -mt-1 -mr-1"></div>
+                                <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-blue-500 -mb-1 -ml-1"></div>
+                                <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-blue-500 -mb-1 -mr-1"></div>
+                            </div>
+                        </div>
+                        <div className="absolute bottom-32 w-full text-center z-20"><span className="px-4 py-2 bg-black/50 text-white text-xs rounded-full">請將名片放入框內</span></div>
+                    </div>
+                    {/* 底部控制列 */}
+                    <div className="absolute bottom-0 left-0 w-full h-32 flex items-center justify-center gap-12 pb-6 bg-black/80 z-50">
                         <button onClick={onCancel} className="text-white font-bold p-4">取消</button>
                         <button onClick={capture} className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 shadow-lg active:scale-95 transition-transform"></button>
                         <div className="w-12"></div>
@@ -171,7 +189,7 @@
 
             const sanitizeKey = (k) => k.trim().replace(/[\r\n\s]/g, '');
 
-            // --- 核心：動態取得可用模型列表 ---
+            // --- 核心：動態取得可用模型列表 (保留不變) ---
             const fetchModelsAndTest = async () => {
                 if(!apiKey) return setTestMessage("請輸入 Key");
                 setTestStatus("testing"); setTestMessage("正在向 Google 查詢可用模型...");
@@ -289,7 +307,7 @@
                 }; r.readAsText(file); e.target.value='';
             };
             const clearAllData = async () => {
-                if(confirm("確定清空?")) { try { await dbUtils.clear(); setCards([]); safeLS.remove("snapcard_cards"); alert("已清空"); } catch (e) { alert("失敗"); } }
+                if(confirm("確定清空?")) { try { await dbUtils.clear(); setCards([]); safeLS.removeItem("snapcard_cards"); alert("已清空"); } catch (e) { alert("失敗"); } }
             };
 
             if (showSplash) {
@@ -298,8 +316,8 @@
                         <div style={{ width: '64px', height: '64px', background: 'linear-gradient(135deg, #3b82f6 0%, #0f172a 100%)', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.4)' }}>
                             <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 512 512" fill="none"><rect x="96" y="156" width="320" height="200" rx="24" fill="white"/><rect x="96" y="190" width="320" height="16" fill="#f97316"/><circle cx="170" cy="256" r="30" fill="#cbd5e1"/><rect x="230" y="240" width="120" height="16" rx="4" fill="#94a3b8"/><rect x="230" y="270" width="80" height="12" rx="3" fill="#e2e8f0"/></svg>
                         </div>
-                        <h1 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', fontFamily: 'sans-serif' }}>SNAPCARD AI</h1>
-                        <p style={{ fontSize: '14px', color: '#64748b', fontFamily: 'sans-serif', marginTop: '8px' }}>人脈，是最好的資產</p>
+                        <h1 style={{ fontSize: '20px', fontWeight: '900', color: '#1e293b', fontFamily: 'sans-serif', letterSpacing: '-0.5px' }}>SNAPCARD AI</h1>
+                        <p style={{ fontSize: '14px', color: '#64748b', fontFamily: 'sans-serif', marginTop: '8px', letterSpacing: '1px' }}>人脈，是最好的資產</p>
                     </div>
                 );
             }
@@ -312,11 +330,11 @@
                     </header>
 
                     <main className="flex-1 overflow-y-auto p-4 relative">
-                        {error && <div className="bg-red-100 text-red-600 p-3 rounded-lg mb-4 text-xs font-bold whitespace-pre-wrap">{error}</div>}
+                        {error && <div className="bg-red-100 text-red-600 p-3 rounded-lg mb-4 text-xs font-bold whitespace-pre-wrap break-all">{error}</div>}
 
                         {view === "home" && (
                             <div className="space-y-4">
-                                {!apiKey && <div onClick={()=>setView("settings")} className="bg-blue-50 p-4 rounded-xl text-blue-600 text-center text-sm font-bold cursor-pointer animate-pulse">👉 請先設定 API Key</div>}
+                                {!apiKey && <div onClick={()=>setView("settings")} className="bg-blue-50 p-4 rounded-xl text-blue-600 text-center text-sm font-bold cursor-pointer animate-pulse">👉 請先設定 API Key (AI 核心)</div>}
                                 <div className="relative">
                                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Icon name="search" size={16}/></div>
                                     <input type="text" placeholder="搜尋..." className="w-full bg-white border border-gray-100 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} />
@@ -342,6 +360,7 @@
                             <div className="space-y-6">
                                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                     <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Icon name="key" className="text-blue-500"/> API 設定</h3>
+                                    
                                     <div style={{height:0,overflow:'hidden'}}><input type="text" /><input type="password" /></div>
                                     <div className="relative mb-4">
                                         <label className="text-xs text-gray-500 block mb-1">Google API Key</label>
@@ -375,7 +394,7 @@
                                         <button onClick={clearAllData} className="w-full flex justify-between p-3 bg-red-50 text-red-600 rounded-xl"><span>清空資料</span><Icon name="trash" size={18}/></button>
                                     </div>
                                 </div>
-                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 10.2 (Dynamic Models)</div>
+                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 10.3 (Auto Detect + UI Fixed)</div>
                                 <button onClick={()=>setView("home")} className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4">返回</button>
                             </div>
                         )}
@@ -400,6 +419,7 @@
                                         </div>
                                     </div>
                                     <div className="space-y-3 pt-2">
+                                        {/* [修正] 圖示與快速連結功能 (點擊可撥打/寄信/導航) */}
                                         {[
                                             {k:"company",i:"building",p:"公司"},{k:"mobile",i:"smartphone",p:"手機"},{k:"tel",i:"phone",p:"電話"},
                                             {k:"fax",i:"printer",p:"傳真"},{k:"email",i:"mail",p:"Email"},{k:"address",i:"map-pin",p:"地址"}
@@ -408,19 +428,21 @@
                                             let href = null;
                                             let target = "";
                                             if (val) {
-                                                if (['mobile','tel','fax'].includes(f.k)) href = `tel:${val}`;
+                                                if (['mobile','tel','fax'].includes(f.k)) href = `tel:${val.replace(/[^0-9+]/g, '')}`;
                                                 else if (f.k === 'email') href = `mailto:${val}`;
                                                 else if (f.k === 'address') { href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(val)}`; target = "_blank"; }
                                             }
 
                                             return (
-                                                <div key={f.k} className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl">
+                                                <div key={f.k} className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl relative">
                                                     {href ? (
-                                                        <a href={href} target={target} className="text-blue-500 active:text-blue-700"><Icon name={f.i} size={18}/></a>
+                                                        <a href={href} target={target} className="text-blue-500 hover:text-blue-700 active:text-blue-800 transition-colors z-10 flex-shrink-0 cursor-pointer p-1">
+                                                            <Icon name={f.i} size={18}/>
+                                                        </a>
                                                     ) : (
-                                                        <Icon name={f.i} className="text-gray-400" size={18}/>
+                                                        <div className="flex-shrink-0 p-1"><Icon name={f.i} className="text-gray-400" size={18}/></div>
                                                     )}
-                                                    <input type="text" value={resultData[f.k]||""} onChange={e=>setResultData({...resultData,[f.k]:e.target.value})} placeholder={f.p} className="flex-1 bg-transparent text-sm focus:outline-none" />
+                                                    <input type="text" value={resultData[f.k]||""} onChange={e=>setResultData({...resultData,[f.k]:e.target.value})} placeholder={f.p} className="flex-1 bg-transparent text-sm focus:outline-none min-w-0" />
                                                 </div>
                                             );
                                         })}
