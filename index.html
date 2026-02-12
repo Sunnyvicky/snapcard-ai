@@ -13,7 +13,6 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 使用 Lucide Global 版本 -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         body { background-color: #f8fafc; color: #1e293b; margin: 0; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
@@ -62,7 +61,6 @@
             render(){ if(this.state.hasError)return <div className="h-screen flex flex-col items-center justify-center p-4 text-red-600"><h3>App 發生錯誤</h3><p className="text-xs mb-4">{this.state.error?.message}</p><button onClick={()=>{localStorage.clear();window.location.reload()}} className="bg-gray-200 px-4 py-2 rounded">重置並重整</button></div>; return this.props.children; }
         }
 
-        // [修正] 恢復原版穩定的 Icon 渲染方式
         const Icon = ({ name, size = 20, className = "" }) => {
             const ref = useRef(null);
             useEffect(() => {
@@ -85,7 +83,7 @@
             i.onload=()=>{ URL.revokeObjectURL(u); const c=document.createElement('canvas'); const m=1200; let w=i.width,h=i.height; if(w>h){if(w>m){h*=m/w;w=m;}}else{if(h>m){w*=m/h;h=m;}} c.width=w; c.height=h; const ctx=c.getContext('2d'); ctx.drawImage(i,0,0,w,h); res(c.toDataURL('image/jpeg',0.8)); }; i.onerror=rej;
         });
 
-        // [修正] 恢復完整的相機 UI (定位框、半透明遮罩、底部控制列)
+        // 包含完整遮罩與定位框的相機 UI
         const CameraScanner = ({onCapture,onCancel}) => {
             const vRef = useRef(null);
             const [error, setError] = useState(null);
@@ -154,7 +152,6 @@
             const [filterCategory, setFilterCategory] = useState("全部");
             const [searchQuery, setSearchQuery] = useState("");
             
-            // 強制預設為空字串，不讀取舊資料
             const [apiKey, setApiKey] = useState("");
             const [selectedModel, setSelectedModel] = useState("");
             const [availableModels, setAvailableModels] = useState([]);
@@ -189,7 +186,27 @@
 
             const sanitizeKey = (k) => k.trim().replace(/[\r\n\s]/g, '');
 
-            // --- 核心：動態取得可用模型列表 (保留不變) ---
+            // [新增] 具有退避重試機制的 Fetch 封裝函式 (解決 429 頻率限制問題)
+            const fetchWithRetry = async (url, options) => {
+                const delays = [1000, 2000, 4000, 8000, 16000]; // 最大重試 5 次
+                for (let i = 0; i <= delays.length; i++) {
+                    try {
+                        const res = await fetch(url, options);
+                        // 如果遇到 429 (配額上限/頻率限制) 且還沒超過重試次數
+                        if (res.status === 429 && i < delays.length) {
+                            console.warn(`遇到 429 限制，等待 ${delays[i]}ms 後重試...`);
+                            await new Promise(resolve => setTimeout(resolve, delays[i]));
+                            continue;
+                        }
+                        return res; // 回傳成功或其他不可重試的錯誤狀態
+                    } catch (err) {
+                        if (i === delays.length) throw err;
+                        await new Promise(resolve => setTimeout(resolve, delays[i]));
+                    }
+                }
+            };
+
+            // 動態取得可用模型列表 (維持不變，僅套用 retry)
             const fetchModelsAndTest = async () => {
                 if(!apiKey) return setTestMessage("請輸入 Key");
                 setTestStatus("testing"); setTestMessage("正在向 Google 查詢可用模型...");
@@ -197,7 +214,7 @@
                 try {
                     const cleanKey = sanitizeKey(apiKey);
                     const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`;
-                    const res = await fetch(url);
+                    const res = await fetchWithRetry(url, { method: 'GET' });
                     
                     if (!res.ok) {
                         const err = await res.json().catch(()=>({}));
@@ -217,7 +234,6 @@
 
                     setAvailableModels(usableModels);
                     
-                    // 自動挑選最佳模型鎖定
                     let bestModel = usableModels.find(m => m.includes("gemini-2.0")) || 
                                     usableModels.find(m => m.includes("gemini-1.5-flash")) ||
                                     usableModels[0];
@@ -250,7 +266,8 @@
 
                     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${cleanKey}`;
                     
-                    const res = await fetch(url, {
+                    // 使用具有自動重試功能的 fetch
+                    const res = await fetchWithRetry(url, {
                         method: "POST", 
                         headers: { "Content-Type": "application/json" },
                         referrerPolicy: "no-referrer",
@@ -262,6 +279,9 @@
                         const errMsg = err.error?.message || res.statusText;
                         if (res.status === 400 && (errMsg.includes("API key") || errMsg.includes("INVALID_ARGUMENT"))) {
                             throw new Error("API Key 無效");
+                        }
+                        if (res.status === 429) {
+                            throw new Error("達到免費配額上限或請求過於頻繁，請稍等一分鐘後再試。");
                         }
                         throw new Error(`${res.status} ${errMsg}`);
                     }
@@ -394,7 +414,7 @@
                                         <button onClick={clearAllData} className="w-full flex justify-between p-3 bg-red-50 text-red-600 rounded-xl"><span>清空資料</span><Icon name="trash" size={18}/></button>
                                     </div>
                                 </div>
-                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 10.3 (Auto Detect + UI Fixed)</div>
+                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 10.4 (Retry Limit Fix)</div>
                                 <button onClick={()=>setView("home")} className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4">返回</button>
                             </div>
                         )}
@@ -419,7 +439,7 @@
                                         </div>
                                     </div>
                                     <div className="space-y-3 pt-2">
-                                        {/* [修正] 圖示與快速連結功能 (點擊可撥打/寄信/導航) */}
+                                        {/* 確保保留完整的可點擊圖示連結 */}
                                         {[
                                             {k:"company",i:"building",p:"公司"},{k:"mobile",i:"smartphone",p:"手機"},{k:"tel",i:"phone",p:"電話"},
                                             {k:"fax",i:"printer",p:"傳真"},{k:"email",i:"mail",p:"Email"},{k:"address",i:"map-pin",p:"地址"}
