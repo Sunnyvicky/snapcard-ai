@@ -185,34 +185,56 @@
 
             const sanitizeKey = (k) => k.trim().replace(/[\r\n\s]/g, '');
 
-            // 保留給真的想測試的人使用 (非必要步驟)
+            const fetchWithRetry = async (url, options) => {
+                const delays = [1000, 2000, 4000, 8000, 16000];
+                for (let i = 0; i <= delays.length; i++) {
+                    try {
+                        const res = await fetch(url, options);
+                        if (res.status === 429 && i < delays.length) {
+                            console.warn(`429 限制，等待 ${delays[i]}ms 後重試...`);
+                            await new Promise(resolve => setTimeout(resolve, delays[i]));
+                            continue;
+                        }
+                        return res; 
+                    } catch (err) {
+                        if (i === delays.length) throw err;
+                        await new Promise(resolve => setTimeout(resolve, delays[i]));
+                    }
+                }
+            };
+
+            // 新增統一的 Google API 授權清單查詢函式
+            const getUsableModels = async (cleanKey) => {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`;
+                const res = await fetchWithRetry(url, { method: 'GET' });
+                
+                if (!res.ok) {
+                    const err = await res.json().catch(()=>({}));
+                    throw new Error(`[${res.status}] ${err.error?.message || res.statusText}`);
+                }
+                
+                const data = await res.json();
+                if (!data.models) throw new Error("API 回傳格式異常");
+
+                const usable = data.models
+                    .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"))
+                    .filter(m => m.name.includes("gemini"))
+                    .map(m => m.name.replace("models/", ""));
+                
+                if (usable.length === 0) throw new Error("此 Key 無法存取任何 Gemini 模型");
+                return usable;
+            };
+
             const fetchModelsAndTest = async () => {
                 if(!apiKey) return setTestMessage("請輸入 Key");
-                setTestStatus("testing"); setTestMessage("正在查詢可用模型...");
+                setTestStatus("testing"); setTestMessage("正在查詢您的授權模型...");
                 
                 try {
                     const cleanKey = sanitizeKey(apiKey);
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`;
-                    const res = await fetch(url);
-                    
-                    if (!res.ok) {
-                        const err = await res.json().catch(()=>({}));
-                        throw new Error(`[${res.status}] ${err.error?.message || res.statusText}`);
-                    }
-                    
-                    const data = await res.json();
-                    if (!data.models) throw new Error("API 回傳格式異常");
-
-                    const usableModels = data.models
-                        .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"))
-                        .filter(m => m.name.includes("gemini"))
-                        .map(m => m.name.replace("models/", ""));
-                    
-                    if (usableModels.length === 0) throw new Error("此 Key 無法存取任何 Gemini 模型");
-
+                    const usableModels = await getUsableModels(cleanKey);
                     setAvailableModels(usableModels);
                     
-                    // 優先找 3.0 -> 2.0 -> 1.5
+                    // 自動預選：優先找 3.0 -> 2.0 -> 1.5
                     let bestModel = usableModels.find(m => m.includes("gemini-3.0")) ||
                                     usableModels.find(m => m.includes("gemini-2.0")) || 
                                     usableModels.find(m => m.includes("gemini-1.5-flash")) ||
@@ -220,7 +242,7 @@
                     
                     setSelectedModel(bestModel);
                     setTestStatus("success"); 
-                    setTestMessage(`驗證成功！已偵測到最新模型：${bestModel}`);
+                    setTestMessage(`驗證成功！已自動偵測最新模型：${bestModel}`);
                     
                 } catch(e) { 
                     setTestStatus("error"); 
@@ -228,7 +250,7 @@
                 }
             };
 
-            // 【終極方案】智慧瀑布流降級機制 (無縫處理 429 錯誤)
+            // 【完全動態】辨識與智慧瀑布流降級
             const analyze = async (base64) => {
                 setIsProcessing(true); setError(null);
                 
@@ -236,68 +258,93 @@
                     setError("請先設定 API Key"); setView("settings"); setIsProcessing(false); return;
                 }
 
-                // 定義瀑布流：如果使用者沒特別選定，我們自動從最新、最強的開始嘗試
-                // 如果遇到 429 或 404，瞬間無縫切換到下一個
-                const modelsToTry = selectedModel ? [selectedModel] : [
-                    "gemini-3.0-flash",   // 嘗試最新 3.0
-                    "gemini-3.0-pro",     
-                    "gemini-2.0-flash",   // 再試 2.0
-                    "gemini-1.5-flash"    // 終極保底 (15 RPM 高額度)
-                ];
-
-                let lastError = "";
-                let successJson = null;
                 const cleanKey = sanitizeKey(apiKey);
-                const prompt = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作","note":""}。規則:1.分mobile/tel/fax 2.company合併中英 3.category[工作,家人,同學,朋友]。無Markdown。`;
-                const imagePart = { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } };
-
-                for (const model of modelsToTry) {
-                    setStatusMsg(`AI 分析中 (${model})...`);
-                    try {
-                        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
-                        
-                        const res = await fetch(url, {
-                            method: "POST", 
-                            headers: { "Content-Type": "application/json" },
-                            referrerPolicy: "no-referrer",
-                            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, imagePart] }] })
-                        });
-
-                        if (!res.ok) {
-                            const err = await res.json().catch(()=>({}));
-                            const errMsg = err.error?.message || res.statusText;
-                            
-                            // 遇到 400 致命錯誤 (Key 錯)，不用試了直接斷開
-                            if (res.status === 400 && (errMsg.includes("API key") || errMsg.includes("INVALID_ARGUMENT"))) {
-                                throw new Error("API Key 無效，請檢查設定。");
-                            }
-                            // 遇到 429 (配額上限)，不傻等，直接切換到清單裡下一個備用模型！
-                            if (res.status === 429) {
-                                console.warn(`[${model}] 頻率受限 (429)，自動降級嘗試下一個模型...`);
-                                lastError = "配額上限或過於頻繁";
-                                continue; 
-                            }
-                            // 遇到 404 (該帳號無權限使用此新模型)，切換下一個
-                            if (res.status === 404) {
-                                console.warn(`[${model}] 尚不支援 (404)，嘗試下一個...`);
-                                lastError = "模型無權限";
-                                continue;
-                            }
-                            
-                            throw new Error(`${res.status} ${errMsg}`);
-                        }
-
-                        successJson = await res.json();
-                        break; // 成功取得 JSON，跳出迴圈！
-
-                    } catch(e) {
-                        if (e.message.includes("API Key")) throw e; // 致命錯誤拋出
-                        lastError = e.message;
-                    }
-                }
+                let actualModels = availableModels;
 
                 try {
-                    if (!successJson) throw new Error(`連線失敗 (${lastError})。建議稍後再試。`);
+                    // 1. 如果尚未取得可用模型清單，在此自動向 Google 查詢 (不再寫死)
+                    if (actualModels.length === 0) {
+                        setStatusMsg("正在向 Google 確認授權模型...");
+                        actualModels = await getUsableModels(cleanKey);
+                        setAvailableModels(actualModels);
+                        
+                        let bestModel = actualModels.find(m => m.includes("gemini-3.0")) ||
+                                        actualModels.find(m => m.includes("gemini-2.0")) || 
+                                        actualModels.find(m => m.includes("gemini-1.5-flash")) ||
+                                        actualModels[0];
+                        setSelectedModel(bestModel);
+                    }
+
+                    // 2. 嚴格根據 Google 給的清單，建立嘗試順序 (3.0 -> 2.0 -> 1.5)
+                    let modelsToTry = [];
+                    // 使用者指定 (或系統剛才挑選的) 最優先
+                    const target = selectedModel || actualModels.find(m => m.includes("gemini-3.0")) || actualModels.find(m => m.includes("gemini-2.0")) || actualModels.find(m => m.includes("gemini-1.5-flash")) || actualModels[0];
+                    
+                    if (target && actualModels.includes(target)) {
+                        modelsToTry.push(target);
+                    }
+                    
+                    // 將其他 Google 授權的模型排入備援名單，若首選觸發 429 則自動順延
+                    const sortedModels = [...actualModels].sort((a, b) => {
+                        const scoreA = a.includes("3.0") ? 3 : (a.includes("2.0") ? 2 : (a.includes("1.5") ? 1 : 0));
+                        const scoreB = b.includes("3.0") ? 3 : (b.includes("2.0") ? 2 : (b.includes("1.5") ? 1 : 0));
+                        return scoreB - scoreA;
+                    });
+                    
+                    for (const m of sortedModels) {
+                        if (!modelsToTry.includes(m)) modelsToTry.push(m);
+                    }
+
+                    let lastError = "";
+                    let successJson = null;
+                    const prompt = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作","note":""}。規則:1.分mobile/tel/fax 2.company合併中英 3.category[工作,家人,同學,朋友]。無Markdown。`;
+                    const imagePart = { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } };
+
+                    // 3. 依序嘗試授權清單中的模型
+                    for (const model of modelsToTry) {
+                        setStatusMsg(`AI 辨識中 (${model})...`);
+                        try {
+                            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
+                            
+                            const res = await fetchWithRetry(url, {
+                                method: "POST", 
+                                headers: { "Content-Type": "application/json" },
+                                referrerPolicy: "no-referrer",
+                                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, imagePart] }] })
+                            });
+
+                            if (!res.ok) {
+                                const err = await res.json().catch(()=>({}));
+                                const errMsg = err.error?.message || res.statusText;
+                                
+                                if (res.status === 400 && (errMsg.includes("API key") || errMsg.includes("INVALID_ARGUMENT"))) {
+                                    throw new Error("API Key 無效，請確認");
+                                }
+                                // 遇到 429 或 403 直接放棄當前模型，切換至備援
+                                if (res.status === 429) {
+                                    console.warn(`[${model}] 頻率受限 (429)，切換下一個授權模型...`);
+                                    lastError = "免費額度或頻率受限";
+                                    continue; 
+                                }
+                                if (res.status === 404) {
+                                    console.warn(`[${model}] 尚不支援 (404)，切換下一個...`);
+                                    lastError = "模型無權限";
+                                    continue;
+                                }
+                                
+                                throw new Error(`${res.status} ${errMsg}`);
+                            }
+
+                            successJson = await res.json();
+                            break; // 成功！跳出嘗試迴圈
+
+                        } catch(e) {
+                            if (e.message.includes("API Key")) throw e;
+                            lastError = e.message;
+                        }
+                    }
+
+                    if (!successJson) throw new Error(`連線失敗 (${lastError})。請稍候再試。`);
 
                     let text = successJson.candidates?.[0]?.content?.parts?.[0]?.text;
                     if(!text) throw new Error("AI 未回傳內容");
@@ -403,7 +450,7 @@
 
                                     {availableModels.length > 0 && (
                                         <div className="mb-4">
-                                            <label className="text-xs text-gray-500 block mb-1">鎖定使用模型</label>
+                                            <label className="text-xs text-gray-500 block mb-1">自動鎖定為最新可用模型</label>
                                             <select value={selectedModel} onChange={e=>setSelectedModel(e.target.value)} className="w-full bg-green-50 border border-green-200 text-green-700 rounded-lg p-3 text-sm focus:outline-none">
                                                 {availableModels.map(m => (
                                                     <option key={m} value={m}>{m}</option>
@@ -413,7 +460,7 @@
                                     )}
 
                                     <div className="flex gap-2">
-                                        <button onClick={fetchModelsAndTest} disabled={testStatus==="testing"} className={`flex-1 py-2 rounded-lg text-sm font-bold ${testStatus==="success"?"bg-green-100 text-green-700":testStatus==="error"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}>{testStatus==="testing"?"偵測中...":testStatus==="success"?"偵測成功":"偵測模型 (非必要)"}</button>
+                                        <button onClick={fetchModelsAndTest} disabled={testStatus==="testing"} className={`flex-1 py-2 rounded-lg text-sm font-bold ${testStatus==="success"?"bg-green-100 text-green-700":testStatus==="error"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}>{testStatus==="testing"?"偵測中...":testStatus==="success"?"偵測成功":"偵測可用模型"}</button>
                                         <button onClick={()=>window.open("https://aistudio.google.com/app/apikey")} className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg text-sm font-bold">取得 Key</button>
                                     </div>
                                     {testMessage && <div className={`text-xs mt-2 p-2 rounded ${testStatus==="error"?"text-red-600 bg-red-50":"text-green-600 bg-green-50"}`}>{testMessage}</div>}
@@ -426,7 +473,7 @@
                                         <button onClick={clearAllData} className="w-full flex justify-between p-3 bg-red-50 text-red-600 rounded-xl"><span>清空資料</span><Icon name="trash" size={18}/></button>
                                     </div>
                                 </div>
-                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 12.0 (Smart Fallback + UI Fix)</div>
+                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 13.0 (Dynamic 3.0 Ready)</div>
                                 <button onClick={()=>setView("home")} className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4">返回</button>
                             </div>
                         )}
