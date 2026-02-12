@@ -35,6 +35,10 @@
         </div>
     </div>
     
+    <script>
+        window.onerror = function(m) { const r=document.getElementById('root'); if(r)r.innerHTML='<div style="padding:20px;text-align:center;color:red;margin-top:50px;"><h3>Error</h3><p>'+m+'</p><button onclick="localStorage.clear();location.reload()" style="padding:10px;">Reset</button></div>'; };
+    </script>
+    
     <script type="text/babel">
         const { useState, useRef, useEffect, useMemo, Component } = React;
 
@@ -58,13 +62,11 @@
             render(){ if(this.state.hasError)return <div className="h-screen flex flex-col items-center justify-center p-4 text-red-600"><h3>App 發生錯誤</h3><p className="text-xs mb-4">{this.state.error?.message}</p><button onClick={()=>{localStorage.clear();window.location.reload()}} className="bg-gray-200 px-4 py-2 rounded">重置並重整</button></div>; return this.props.children; }
         }
 
-        // 修正後的 Icon 元件：使用 SVG 字串渲染，避免 DOM 操作衝突
         const Icon = ({name, size=20, className=""}) => {
             const [svgHtml, setSvgHtml] = useState("");
             
             useEffect(() => {
                 if (window.lucide && window.lucide.icons && window.lucide.icons[name]) {
-                    // 使用 Lucide 的 toSVG 方法生成 SVG 字串
                     const svg = window.lucide.icons[name].toSVG({
                         width: size,
                         height: size,
@@ -72,7 +74,6 @@
                     });
                     setSvgHtml(svg);
                 } else if (window.lucide) {
-                    // Fallback for missing icons or if API differs
                     const i = document.createElement('i');
                     i.setAttribute('data-lucide', name);
                     window.lucide.createIcons({root: i, attrs: {width:size, height:size, class:className}});
@@ -135,7 +136,11 @@
             const [filterCategory, setFilterCategory] = useState("全部");
             const [searchQuery, setSearchQuery] = useState("");
             
-            const [apiKey, setApiKey] = useState(() => safeLS.get("snapcard_api_key") || "");
+            // 強制預設為空字串，不讀取舊資料
+            const [apiKey, setApiKey] = useState("");
+            const [selectedModel, setSelectedModel] = useState("");
+            const [availableModels, setAvailableModels] = useState([]);
+            
             const [testStatus, setTestStatus] = useState("idle"); 
             const [testMessage, setTestMessage] = useState("");
             const [statusMsg, setStatusMsg] = useState(""); 
@@ -143,64 +148,109 @@
             
             const randomInputName = useMemo(() => `s_${Math.random().toString(36).slice(2)}`, []);
 
-            useEffect(() => { setTimeout(() => setShowSplash(false), 2000); }, []);
-            useEffect(() => { const l=async()=>{try{const d=await dbUtils.getAll(); setCards(d.sort((a,b)=>b.id-a.id));}catch(e){}}; l(); }, []);
+            useEffect(() => { 
+                safeLS.remove("snapcard_api_key"); 
+                setTimeout(() => setShowSplash(false), 2000); 
+            }, []);
+            
+            useEffect(() => { const l=async()=>{ try{const d=await dbUtils.getAll(); setCards(d.sort((a,b)=>b.id-a.id));}catch(e){} }; l(); }, []);
 
             const startScanFlow = () => { if (!apiKey) { setView("settings"); return; } setView("scan"); };
             const handleManualAdd = () => { setResultData({ category: "工作" }); setCapturedImage(null); setBackImage(null); setCurrentAvatar(null); setAdditionalImage(null); setCurrentCardId(null); setView("result"); };
             const handleScanCapture = (base64) => { setCapturedImage(base64); setView("home"); analyze(base64); };
-            const handleImageUpload = async (e, setter) => { if (e.target.files[0]) { try { const b = await compressImage(e.target.files[0]); setter(b); } catch(err) { alert("Error"); } } };
-            const clearApiKey = () => { setApiKey(""); safeLS.remove("snapcard_api_key"); setTestStatus("idle"); setTestMessage(""); };
+            const handleImageUpload = async (e, setter) => { if (e.target.files[0]) { try { const b = await compressImage(e.target.files[0]); setter(b); } catch(err) { alert("圖片處理失敗"); } } };
+            
+            const clearApiKey = () => { 
+                setApiKey(""); 
+                safeLS.remove("snapcard_api_key"); 
+                setTestStatus("idle"); 
+                setTestMessage(""); 
+                setAvailableModels([]);
+                setSelectedModel("");
+            };
 
-            const testConnection = async () => {
+            const sanitizeKey = (k) => k.trim().replace(/[\r\n\s]/g, '');
+
+            // --- 核心：動態取得可用模型列表 ---
+            const fetchModelsAndTest = async () => {
                 if(!apiKey) return setTestMessage("請輸入 Key");
-                setTestStatus("testing"); setTestMessage("連線測試中...");
-                const cleanKey = apiKey.trim();
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cleanKey}`;
+                setTestStatus("testing"); setTestMessage("正在向 Google 查詢可用模型...");
                 
                 try {
-                    const res = await fetch(url, {
-                        method: "POST", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ contents: [{ parts: [{ text: "Hello" }] }] })
-                    });
-                    if(!res.ok) {
-                        const d = await res.json().catch(()=>({}));
-                        throw new Error(d.error?.message || res.statusText);
+                    const cleanKey = sanitizeKey(apiKey);
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`;
+                    const res = await fetch(url);
+                    
+                    if (!res.ok) {
+                        const err = await res.json().catch(()=>({}));
+                        const errMsg = err.error?.message || res.statusText;
+                        throw new Error(`[${res.status}] ${errMsg}`);
                     }
-                    setTestStatus("success"); setTestMessage("API Key 驗證成功！");
+                    
+                    const data = await res.json();
+                    if (!data.models) throw new Error("API 回傳格式異常 (無 models)");
+
+                    const usableModels = data.models
+                        .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"))
+                        .filter(m => m.name.includes("gemini"))
+                        .map(m => m.name.replace("models/", ""));
+                    
+                    if (usableModels.length === 0) throw new Error("此 Key 無法存取任何 Gemini 模型");
+
+                    setAvailableModels(usableModels);
+                    
+                    // 自動挑選最佳模型鎖定
+                    let bestModel = usableModels.find(m => m.includes("gemini-2.0")) || 
+                                    usableModels.find(m => m.includes("gemini-1.5-flash")) ||
+                                    usableModels[0];
+                    
+                    setSelectedModel(bestModel);
+                    setTestStatus("success"); 
+                    setTestMessage(`驗證成功！已自動鎖定：${bestModel}`);
+                    
                 } catch(e) { 
                     setTestStatus("error"); 
-                    setTestMessage("驗證失敗: " + e.message); 
+                    setTestMessage(`失敗: ${e.message}`); 
+                    alert(`API Key 驗證失敗。\n原因: ${e.message}`);
                 }
             };
 
             const analyze = async (base64) => {
                 setIsProcessing(true); setError(null);
                 
-                const cleanKey = apiKey.trim();
-                const model = "gemini-1.5-flash"; // 鎖定目前最穩定的模型
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
-                
-                const prompt = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作","note":""}。規則:1.分mobile/tel/fax 2.company合併中英 3.category[工作,家人,同學,朋友]。無Markdown。`;
-                
+                if (!apiKey) {
+                    setError("請先設定 API Key"); setView("settings"); setIsProcessing(false); return;
+                }
+
+                const targetModel = selectedModel || "gemini-1.5-flash";
+                setStatusMsg(`AI 分析中 (${targetModel})...`);
+
                 try {
-                    setStatusMsg("AI 正在分析名片...");
+                    const cleanKey = sanitizeKey(apiKey);
+                    const prompt = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作","note":""}。規則:1.分mobile/tel/fax 2.company合併中英 3.category[工作,家人,同學,朋友]。無Markdown。`;
+                    const imagePart = { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } };
+
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${cleanKey}`;
+                    
                     const res = await fetch(url, {
-                        method: "POST", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }] }] })
+                        method: "POST", 
+                        headers: { "Content-Type": "application/json" },
+                        referrerPolicy: "no-referrer",
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, imagePart] }] })
                     });
 
                     if (!res.ok) {
-                        const d = await res.json().catch(()=>({}));
-                        const errMsg = d.error?.message || res.statusText;
-                        if (res.status === 400 || res.status === 403) throw new Error("API Key 無效或無權限");
-                        if (res.status === 404) throw new Error("模型暫時不可用，請稍後再試");
-                        throw new Error(errMsg);
+                        const err = await res.json().catch(()=>({}));
+                        const errMsg = err.error?.message || res.statusText;
+                        if (res.status === 400 && (errMsg.includes("API key") || errMsg.includes("INVALID_ARGUMENT"))) {
+                            throw new Error("API Key 無效");
+                        }
+                        throw new Error(`${res.status} ${errMsg}`);
                     }
 
                     const json = await res.json();
                     let text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if(!text) throw new Error("AI 無回傳內容");
+                    if(!text) throw new Error("AI 未回傳內容");
                     
                     text = text.replace(/```json|```/g, '').trim();
                     const start = text.indexOf('{'), end = text.lastIndexOf('}');
@@ -262,7 +312,7 @@
                     </header>
 
                     <main className="flex-1 overflow-y-auto p-4 relative">
-                        {error && <div className="bg-red-100 text-red-600 p-3 rounded-lg mb-4 text-xs font-bold">{error}</div>}
+                        {error && <div className="bg-red-100 text-red-600 p-3 rounded-lg mb-4 text-xs font-bold whitespace-pre-wrap">{error}</div>}
 
                         {view === "home" && (
                             <div className="space-y-4">
@@ -295,11 +345,24 @@
                                     <div style={{height:0,overflow:'hidden'}}><input type="text" /><input type="password" /></div>
                                     <div className="relative mb-4">
                                         <label className="text-xs text-gray-500 block mb-1">Google API Key</label>
-                                        <input type="password" autoComplete="new-password" readOnly onFocus={e=>e.target.removeAttribute('readonly')} name={randomInputName} value={apiKey} onChange={e=>{setApiKey(e.target.value);safeLS.set("snapcard_api_key",e.target.value);}} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-blue-100" placeholder="AIzaSy..." />
+                                        <input type="password" autoComplete="new-password" readOnly onFocus={e=>e.target.removeAttribute('readonly')} name={randomInputName} value={apiKey} onChange={e=>{setApiKey(e.target.value);}} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-blue-100" placeholder="AIzaSy..." />
                                         {apiKey && <button onClick={clearApiKey} className="absolute right-3 top-8 text-gray-400 hover:text-red-500"><Icon name="x" size={16}/></button>}
                                     </div>
+
+                                    {/* 顯示從 Google API 自動抓回的可用模型清單 */}
+                                    {availableModels.length > 0 && (
+                                        <div className="mb-4">
+                                            <label className="text-xs text-gray-500 block mb-1">已偵測到可用模型</label>
+                                            <select value={selectedModel} onChange={e=>setSelectedModel(e.target.value)} className="w-full bg-green-50 border border-green-200 text-green-700 rounded-lg p-3 text-sm focus:outline-none">
+                                                {availableModels.map(m => (
+                                                    <option key={m} value={m}>{m}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+
                                     <div className="flex gap-2">
-                                        <button onClick={testConnection} disabled={testStatus==="testing"} className={`flex-1 py-2 rounded-lg text-sm font-bold ${testStatus==="success"?"bg-green-100 text-green-700":testStatus==="error"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}>{testStatus==="testing"?"測試中...":testStatus==="success"?"測試成功":"測試連線"}</button>
+                                        <button onClick={fetchModelsAndTest} disabled={testStatus==="testing"} className={`flex-1 py-2 rounded-lg text-sm font-bold ${testStatus==="success"?"bg-green-100 text-green-700":testStatus==="error"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}>{testStatus==="testing"?"偵測中...":testStatus==="success"?"偵測成功":"偵測可用模型"}</button>
                                         <button onClick={()=>window.open("https://aistudio.google.com/app/apikey")} className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg text-sm font-bold">取得 Key</button>
                                     </div>
                                     {testMessage && <div className={`text-xs mt-2 p-2 rounded ${testStatus==="error"?"text-red-600 bg-red-50":"text-green-600 bg-green-50"}`}>{testMessage}</div>}
@@ -312,7 +375,7 @@
                                         <button onClick={clearAllData} className="w-full flex justify-between p-3 bg-red-50 text-red-600 rounded-xl"><span>清空資料</span><Icon name="trash" size={18}/></button>
                                     </div>
                                 </div>
-                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 10.1 (UI Fix)</div>
+                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 10.2 (Dynamic Models)</div>
                                 <button onClick={()=>setView("home")} className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4">返回</button>
                             </div>
                         )}
