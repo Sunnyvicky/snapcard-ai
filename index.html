@@ -5,15 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SnapCard AI - 專業人脈管家</title>
     
-    <!-- PWA 設定 -->
+    <!-- PWA 核心設定 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="SnapCard">
     <meta name="theme-color" content="#ffffff">
+
+    <!-- Web App Manifest (Data URI 嵌入版 - 告訴系統這是標準 PWA) -->
+    <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIlNuYXBDYXJkIEFJIiwKICAic2hvcnRfbmFtZSI6ICJTbmFwQ2FyZCIsCiAgInN0YXJ0X3VybCI6ICIuIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjZmZmZmZmIiwKICAidGhlbWVfY29sb3IiOiAiIzFlM2E4YSIsCiAgImljb25zIjogWwogICAgewogICAgICAic3JjIjogImRhdGE6aW1hZ2Uvc3ZnK3htbDtbase64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOTIiIGhlaWdodD0iMTkyIiB2aWV3Qm94PSIwIDAgMTkyIDE5MiI+PHJlY3Qgd2lkdGg9IjE5MiIgaGVpZ2h0PSIxOTIiIGZpbGw9IndoaXRlIi8+PHJlY3QgeD0iMjUiIHk9IjUwIiB3aWR0aD0iMTQyIiBoZWlnaHQ9Ijk4IiByeD0iMTIiIGZpbGw9IiMxRTNBOEEiLz48Y2lyY2xlIGN4PSI5NiIgY3k9Ijk5IiByPSIyMCIgZmlsbD0iI0Y1OUUwQiIvPjwvc3ZnPg==",CiAgICAgICJzaXplcyI6ICIxOTJ4MTkyIiwKICAgICAgInR5cGUiOiAiaW1hZ2UvcG5nIgogICAgfQogIF0KfQ==">
     
-    <!-- App Icon: 使用簡化版 SVG 編碼，提高 iOS 相容性 (白底+藍名片+文字) -->
-    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%23ffffff'/%3E%3Crect x='126' y='110' width='300' height='220' rx='24' fill='%23cbd5e1' transform='rotate(6 276 210)'/%3E%3Crect x='96' y='126' width='320' height='220' rx='24' fill='%231e3a8a'/%3E%3Ccircle cx='256' cy='200' r='36' fill='%23f59e0b'/%3E%3Crect x='186' y='260' width='140' height='16' rx='8' fill='%23ffffff'/%3E%3Crect x='156' y='290' width='200' height='10' rx='5' fill='%2364748b'/%3E%3Crect x='196' y='310' width='120' height='10' rx='5' fill='%2364748b' opacity='0.7'/%3E%3Ctext x='256' y='460' font-family='sans-serif' font-weight='900' font-size='60' fill='%231e3a8a' text-anchor='middle'%3ESnapCard%3C/text%3E%3C/svg%3E">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%23ffffff'/%3E%3Crect x='126' y='110' width='300' height='220' rx='24' fill='%23cbd5e1' transform='rotate(6 276 210)'/%3E%3Crect x='96' y='126' width='320' height='220' rx='24' fill='%231e3a8a'/%3E%3Ccircle cx='256' cy='200' r='36' fill='%23f59e0b'/%3E%3Crect x='186' y='260' width='140' height='16' rx='8' fill='%23ffffff'/%3E%3Crect x='156' y='290' width='200' height='10' rx='5' fill='%2364748b'/%3E%3Crect x='196' y='310' width='120' height='10' rx='5' fill='%2364748b' opacity='0.7'/%3E%3Ctext x='256' y='460' font-family='sans-serif' font-weight='900' font-size='60' fill='%231e3a8a' text-anchor='middle'%3ESnapCard%3C/text%3E%3C/svg%3E">
+    <!-- App Icon: 多尺寸 Precomposed 標籤 (解決 S 壓字問題) -->
+    <!-- 180x180 (iPhone Plus/Max) -->
+    <link rel="apple-touch-icon-precomposed" sizes="180x180" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDE4MCAxODAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjE4MCIgaGVpZ2h0PSIxODAiIGZpbGw9IndoaXRlIi8+PHJlY3QgeD0iMjAiIHk9IjQwIiB3aWR0aD0iMTQwIiBoZWlnaHQ9IjkwIiByeD0iMTIiIGZpbGw9IiMxRTNBOEEiLz48Y2lyY2xlIGN4PSI5MCIgY3k9Ijg1IiByPSIyNSIgZmlsbD0iI0Y1OUUwQiIvPjx0ZXh0IHg9IjkwIiB5PSIxNjUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgSGVsdmV0aWNhLCBzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iOTAwIiBmb250LXNpemU9IjIyIiBmaWxsPSIjMWUzYThhIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5TbmFwQ2FyZDwvdGV4dD48L3N2Zz4=">
+    <!-- 152x152 (iPad) -->
+    <link rel="apple-touch-icon-precomposed" sizes="152x152" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUyIiBoZWlnaHQ9IjE1MiIgdmlld0JveD0iMCAwIDE1MiAxNTIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjE1MiIgaGVpZ2h0PSIxNTIiIGZpbGw9IndoaXRlIi8+PHJlY3QgeD0iMTciIHk9IjM0IiB3aWR0aD0iMTE4IiBoZWlnaHQ9Ijc2IiByeD0iMTAiIGZpbGw9IiMxRTNBOEEiLz48Y2lyY2xlIGN4PSI3NiIgY3k9IjcyIiByPSIyMSIgZmlsbD0iI0Y1OUUwQiIvPjx0ZXh0IHg9Ijc2IiB5PSIxMzkiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjkwMCIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzFlM2E4YSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+U25hcENhcmQ8L3RleHQ+PC9zdmc+">
+    <!-- 120x120 (iPhone Retina) -->
+    <link rel="apple-touch-icon-precomposed" sizes="120x120" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEyMCIgdmlld0JveD0iMCAwIDEyMCAxMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjEyMCIgaGVpZ2h0PSIxMjAiIGZpbGw9IndoaXRlIi8+PHJlY3QgeD0iMTMiIHk9IjI3IiB3aWR0aD0iOTQiIGhlaWdodD0iNjAiIHJ4PSI4IiBmaWxsPSIjMUUzQThBIi8+PGNpcmNsZSBjeD0iNjAiIGN5PSI1NyIgcj0iMTYiIGZpbGw9IiNGNTlFMEIiLz48dGV4dCB4PSI2MCIgeT0iMTEwIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI5MDAiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiMxZTNhOGEi text-anchor="middle">SnapCard</text></svg>">
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDMyIDMyIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIGZpbGw9IndoaXRlIi8+PHJlY3QgeD0iNCIgeT0iOCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjE2IiByeD0iMiIgZmlsbD0iIzFFM0E4QSIvPjxjaXJjbGUgY3g9IjE2IiBjeT0iMTYiIHI9IjQiIGZpbGw9IiNGNTlFMEIiLz48L3N2Zz4=">
 
     <!-- Libraries -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -57,7 +66,6 @@
             box-shadow: 0 0 10px #f97316;
             animation: scan 2s linear infinite;
         }
-        /* 啟動畫面樣式：深藍色背景 */
         .splash-screen {
             position: fixed;
             top: 0;
@@ -76,17 +84,13 @@
 </head>
 <body>
     <div id="root">
-        <!-- 預設靜態啟動畫面 (HTML) - 含動畫 -->
         <div class="splash-screen">
-            <!-- 啟動 Logo: 藍底+白名片 (與 App Icon 不同) -->
             <div style="width: 120px; height: 120px; margin-bottom: 24px;">
                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
                     <rect x="86" y="156" width="340" height="200" rx="20" fill="white"/>
                     <circle cx="160" cy="256" r="35" fill="#e2e8f0"/>
                     <rect x="230" y="240" width="140" height="16" rx="4" fill="#94a3b8"/>
                     <rect x="230" y="270" width="100" height="12" rx="3" fill="#cbd5e1"/>
-                    
-                    <!-- 掃描線 (橘) - 加入上下移動動畫 -->
                     <rect x="86" y="156" width="340" height="16" fill="#f97316" opacity="0.8">
                         <animate attributeName="y" values="156;340;156" dur="2s" repeatCount="indefinite" calcMode="spline" keySplines="0.45 0 0.55 1; 0.45 0 0.55 1" />
                     </rect>
@@ -275,38 +279,19 @@
                 for (let i = 0; i <= delays.length; i++) {
                     try {
                         const res = await fetch(url, options);
-                        if (res.status === 429) {
-                            return res; 
-                        }
-                        if (!res.ok && res.status >= 500 && i < delays.length) {
-                            await new Promise(resolve => setTimeout(resolve, delays[i]));
-                            continue;
-                        }
+                        if (res.status === 429) return res; 
+                        if (!res.ok && res.status >= 500 && i < delays.length) { await new Promise(resolve => setTimeout(resolve, delays[i])); continue; }
                         return res; 
-                    } catch (err) {
-                        if (i === delays.length) throw err;
-                        await new Promise(resolve => setTimeout(resolve, delays[i]));
-                    }
+                    } catch (err) { if (i === delays.length) throw err; await new Promise(resolve => setTimeout(resolve, delays[i])); }
                 }
             };
 
             const getUsableModels = async (cleanKey) => {
                 const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`;
                 const res = await fetchWithRetry(url, { method: 'GET' });
-                
-                if (!res.ok) {
-                    const err = await res.json().catch(()=>({}));
-                    throw new Error(`[${res.status}] ${err.error?.message || res.statusText}`);
-                }
-                
+                if (!res.ok) { const err = await res.json().catch(()=>({})); throw new Error(`[${res.status}] ${err.error?.message || res.statusText}`); }
                 const data = await res.json();
-                if (!data.models) throw new Error("API 回傳格式異常");
-
-                const usable = data.models
-                    .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"))
-                    .filter(m => m.name.includes("gemini") && !m.name.includes("1.5")) 
-                    .map(m => m.name.replace("models/", ""));
-                
+                const usable = data.models.filter(m => m.supportedGenerationMethods?.includes("generateContent") && m.name.includes("gemini") && !m.name.includes("1.5")).map(m => m.name.replace("models/", ""));
                 if (usable.length === 0) throw new Error("此 Key 無法存取 Gemini 2.0/3.0 模型");
                 return usable;
             };
@@ -314,67 +299,36 @@
             const fetchModelsAndTest = async () => {
                 if(!apiKey) return setTestMessage("請輸入 Key");
                 setTestStatus("testing"); setTestMessage("正在查詢您的授權模型...");
-                
                 try {
                     const cleanKey = sanitizeKey(apiKey);
                     const usableModels = await getUsableModels(cleanKey);
                     setAvailableModels(usableModels);
-                    
-                    let bestModel = usableModels.find(m => m.includes("gemini-3.0")) ||
-                                    usableModels.find(m => m.includes("gemini-2.0")) || 
-                                    usableModels[0];
-                    
+                    let bestModel = usableModels.find(m => m.includes("gemini-3.0")) || usableModels.find(m => m.includes("gemini-2.0")) || usableModels[0];
                     setSelectedModel(bestModel);
-                    setTestStatus("success"); 
-                    setTestMessage(`驗證成功！已自動偵測最新模型：${bestModel}`);
-                    
-                } catch(e) { 
-                    setTestStatus("error"); 
-                    setTestMessage(`失敗: ${e.message}`); 
-                }
+                    setTestStatus("success"); setTestMessage(`驗證成功！已自動偵測最新模型：${bestModel}`);
+                } catch(e) { setTestStatus("error"); setTestMessage(`失敗: ${e.message}`); }
             };
 
             const analyze = async (base64) => {
                 setIsProcessing(true); setError(null);
-                
-                if (!apiKey) {
-                    setError("請先設定 API Key"); setView("settings"); setIsProcessing(false); return;
-                }
-
+                if (!apiKey) { setError("請先設定 API Key"); setView("settings"); setIsProcessing(false); return; }
                 const cleanKey = sanitizeKey(apiKey);
                 let actualModels = availableModels;
-
                 try {
                     if (actualModels.length === 0) {
                         setStatusMsg("正在向 Google 確認授權模型...");
                         actualModels = await getUsableModels(cleanKey);
                         setAvailableModels(actualModels);
-                        
-                        let bestModel = actualModels.find(m => m.includes("gemini-3.0")) ||
-                                        actualModels.find(m => m.includes("gemini-2.0")) || 
-                                        actualModels[0];
+                        let bestModel = actualModels.find(m => m.includes("gemini-3.0")) || actualModels.find(m => m.includes("gemini-2.0")) || actualModels[0];
                         setSelectedModel(bestModel);
                     }
-
                     let modelsToTry = [];
                     const target = selectedModel || actualModels.find(m => m.includes("gemini-3.0")) || actualModels.find(m => m.includes("gemini-2.0")) || actualModels[0];
-                    
-                    if (target && actualModels.includes(target)) {
-                        modelsToTry.push(target);
-                    }
-                    
-                    const sortedModels = [...actualModels].sort((a, b) => {
-                        const scoreA = a.includes("3.0") ? 3 : (a.includes("2.0") ? 2 : 0);
-                        const scoreB = b.includes("3.0") ? 3 : (b.includes("2.0") ? 2 : 0);
-                        return scoreB - scoreA;
-                    });
-                    
-                    for (const m of sortedModels) {
-                        if (!modelsToTry.includes(m)) modelsToTry.push(m);
-                    }
+                    if (target && actualModels.includes(target)) modelsToTry.push(target);
+                    const sorted = [...actualModels].sort((a,b)=>(b.includes("3.0")?3:b.includes("2.0")?2:0)-(a.includes("3.0")?3:a.includes("2.0")?2:0));
+                    sorted.forEach(m=>{if(!modelsToTry.includes(m))modelsToTry.push(m)});
 
-                    let lastError = "";
-                    let successJson = null;
+                    let lastError = "", successJson = null;
                     const prompt = `分析名片回傳JSON:{"name":"","jobTitle":"","company":"","mobile":"","tel":"","fax":"","email":"","address":"","category":"工作-客戶","note":""}。規則:1.分mobile/tel/fax 2.company合併中英 3.category[工作-客戶,工作-廠商,家人,朋友]。無Markdown。`;
                     const imagePart = { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } };
 
@@ -382,147 +336,59 @@
                         setStatusMsg(`AI 辨識中 (${model})...`);
                         try {
                             const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
-                            
-                            const res = await fetchWithRetry(url, {
-                                method: "POST", 
-                                headers: { "Content-Type": "application/json" },
-                                referrerPolicy: "no-referrer",
-                                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, imagePart] }] })
-                            });
-
+                            const res = await fetchWithRetry(url, { method: "POST", headers: { "Content-Type": "application/json" }, referrerPolicy: "no-referrer", body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, imagePart] }] }) });
                             if (!res.ok) {
                                 const err = await res.json().catch(()=>({}));
-                                const errMsg = err.error?.message || res.statusText;
-                                
-                                if (res.status === 400 && (errMsg.includes("API key") || errMsg.includes("INVALID_ARGUMENT"))) {
-                                    throw new Error("API Key 無效，請檢查設定");
-                                }
-                                
-                                console.warn(`[${model}] 失敗 (${res.status})，瞬間跳過...`);
-                                lastError = `[${res.status}] ${errMsg}`;
-                                continue; 
+                                const msg = err.error?.message || res.statusText;
+                                if (res.status === 400 && (msg.includes("API key") || msg.includes("INVALID_ARGUMENT"))) throw new Error("API Key 無效");
+                                console.warn(`[${model}] 失敗 (${res.status})，瞬間跳過...`); lastError = `[${res.status}] ${msg}`; continue; 
                             }
-
                             const json = await res.json();
                             let text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-                            if(!text) {
-                                lastError = "模型回傳空白內容";
-                                continue;
-                            }
-                            
+                            if(!text) { lastError = "模型回傳空白內容"; continue; }
                             text = text.replace(/```json|```/g, '').trim();
                             const start = text.indexOf('{'), end = text.lastIndexOf('}');
-                            if (start === -1 || end === -1) {
-                                lastError = "JSON 格式解析錯誤";
-                                continue;
-                            }
-                            
                             successJson = JSON.parse(text.substring(start, end + 1));
                             break; 
-
-                        } catch(e) {
-                            if (e.message.includes("API Key")) throw e;
-                            lastError = e.message;
-                        }
+                        } catch(e) { if (e.message.includes("API Key")) throw e; lastError = e.message; }
                     }
-
-                    if (!successJson) {
-                        throw new Error(`所有模型皆忙碌或達到額度上限 (${lastError})。請稍等一分鐘後再試。`);
-                    }
-                    
-                    setResultData(successJson || { category: "工作-客戶" });
-                    setBackImage(null); setAdditionalImage(null); setCurrentAvatar(null); setCurrentCardId(null);
-                    setView("result");
-
-                } catch(e) {
-                    setError(`辨識失敗: ${e.message}`);
-                    setView("home");
-                } finally {
-                    setIsProcessing(false);
-                }
+                    if (!successJson) throw new Error(`連線失敗 (${lastError})`);
+                    setResultData(successJson || { category: "工作-客戶" }); setBackImage(null); setAdditionalImage(null); setCurrentAvatar(null); setCurrentCardId(null); setView("result");
+                } catch(e) { setError(`辨識失敗: ${e.message}`); setView("home"); } finally { setIsProcessing(false); }
             };
 
             const saveCard = async () => {
                 const newData = { id: currentCardId || Date.now(), ...resultData, image: capturedImage, backImage: backImage, avatar: currentAvatar, additionalImage: additionalImage, category: resultData.category||"工作-客戶" };
                 await dbUtils.put(newData);
-                const d = await dbUtils.getAll(); 
-                setCards(sortCardsList(d));
-                setView("home");
+                const d = await dbUtils.getAll(); setCards(sortCardsList(d)); setView("home");
             };
-            
-            const handleDeleteCard = async (id, e) => {
-                e.stopPropagation(); if(confirm("刪除?")) { await dbUtils.delete(id); setCards(prev => prev.filter(c => c.id !== id)); }
-            };
-            
+            const handleDeleteCard = async (id, e) => { e.stopPropagation(); if(confirm("刪除?")) { await dbUtils.delete(id); setCards(prev => prev.filter(c => c.id !== id)); } };
             const sortCardsList = (cardsArray) => {
                 return [...cardsArray].sort((a, b) => {
-                    const compA = (a.company || "").toString().toLowerCase();
-                    const compB = (b.company || "").toString().toLowerCase();
-                    if (compA < compB) return -1;
-                    if (compA > compB) return 1;
-                    
-                    const nameA = (a.name || "").toString().toLowerCase();
-                    const nameB = (b.name || "").toString().toLowerCase();
-                    if (nameA < nameB) return -1;
-                    if (nameA > nameB) return 1;
-                    
+                    const compA = (a.company || "").toString().toLowerCase(); const compB = (b.company || "").toString().toLowerCase();
+                    if (compA < compB) return -1; if (compA > compB) return 1;
+                    const nameA = (a.name || "").toString().toLowerCase(); const nameB = (b.name || "").toString().toLowerCase();
+                    if (nameA < nameB) return -1; if (nameA > nameB) return 1;
                     return b.id - a.id;
                 });
             };
-
             const downloadSingleVcf = () => {
                 const card = resultData;
                 let vcf = "BEGIN:VCARD\nVERSION:3.0\n";
                 let displayName = card.name || "未命名";
                 if (card.company) displayName = `${card.company} ${displayName}`;
-                
-                vcf += `FN:${displayName}\n`;
-                vcf += `N:${displayName};;;;\n`;
-                
-                if (card.company) vcf += `ORG:${card.company};\n`;
-                if (card.jobTitle) vcf += `TITLE:${card.jobTitle}\n`;
-                if (card.mobile) vcf += `TEL;type=CELL:${card.mobile}\n`;
-                if (card.tel) vcf += `TEL;type=WORK:${card.tel}\n`;
-                if (card.fax) vcf += `TEL;type=FAX:${card.fax}\n`;
-                if (card.email) vcf += `EMAIL;type=INTERNET;type=WORK:${card.email}\n`;
-                if (card.address) vcf += `ADR;type=WORK:;;${card.address};;;;\n`;
-                
-                let notes = [];
-                if (card.category) notes.push(`分類: ${card.category}`);
-                if (card.note) notes.push(card.note);
-                if (notes.length > 0) vcf += `NOTE:${notes.join(' | ')}\n`;
-                
+                vcf += `FN:${displayName}\nN:${displayName};;;;\n`;
+                if (card.company) vcf += `ORG:${card.company};\n`; if (card.jobTitle) vcf += `TITLE:${card.jobTitle}\n`;
+                if (card.mobile) vcf += `TEL;type=CELL:${card.mobile}\n`; if (card.tel) vcf += `TEL;type=WORK:${card.tel}\n`; if (card.fax) vcf += `TEL;type=FAX:${card.fax}\n`;
+                if (card.email) vcf += `EMAIL;type=INTERNET;type=WORK:${card.email}\n`; if (card.address) vcf += `ADR;type=WORK:;;${card.address};;;;\n`;
+                let notes = []; if (card.category) notes.push(`分類: ${card.category}`); if (card.note) notes.push(card.note); if (notes.length > 0) vcf += `NOTE:${notes.join(' | ')}\n`;
                 vcf += "END:VCARD\n";
-                
-                const blob = new Blob([vcf], { type: 'text/vcard' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.download = `${displayName}.vcf`;
-                a.href = url;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+                const blob = new Blob([vcf], { type: 'text/vcard' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.download = `${displayName}.vcf`; a.href = url; document.body.appendChild(a); a.click(); document.body.removeChild(a);
             };
-
-            const exportData = () => {
-                const blob = new Blob([JSON.stringify(cards,null,2)], {type:"application/json"});
-                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = "snapcard_backup.json"; a.click();
-            };
-            const importData = (e) => {
-                const file = e.target.files[0]; if(!file)return;
-                const r = new FileReader(); r.onload=async(ev)=>{
-                    try { const d = JSON.parse(ev.target.result); for(const c of d) await dbUtils.put(c); 
-                    const all = await dbUtils.getAll(); 
-                    setCards(sortCardsList(all)); 
-                    alert("匯入成功"); } catch{alert("格式錯誤");}
-                }; r.readAsText(file); e.target.value='';
-            };
-
-            const baseModels = ["gemini-3.0-flash", "gemini-3.0-pro", "gemini-2.0-flash", "gemini-2.0-flash-exp"];
-            const dropdownModels = [...new Set([...baseModels, ...availableModels])].filter(m => !m.includes("1.5"));
+            const exportData = () => { const blob = new Blob([JSON.stringify(cards,null,2)], {type:"application/json"}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = "snapcard_backup.json"; a.click(); };
+            const importData = (e) => { const file = e.target.files[0]; if(!file)return; const r = new FileReader(); r.onload=async(ev)=>{ try { const d = JSON.parse(ev.target.result); for(const c of d) await dbUtils.put(c); const all = await dbUtils.getAll(); setCards(sortCardsList(all)); alert("匯入成功"); } catch{alert("格式錯誤");} }; r.readAsText(file); e.target.value=''; };
 
             if (showSplash) {
-                // [確保同步] React 渲染的啟動畫面：深藍底 + 白名片 + 橘線動畫
                 return (
                     <div className="fixed inset-0 bg-[#1e3a8a] z-[9999] flex flex-col items-center justify-center" style={{background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)'}}>
                         <div style={{ width: '120px', height: '120px', marginBottom: '24px' }}>
@@ -531,7 +397,6 @@
                                 <circle cx="160" cy="256" r="35" fill="#e2e8f0"/>
                                 <rect x="230" y="240" width="140" height="16" rx="4" fill="#94a3b8"/>
                                 <rect x="230" y="270" width="100" height="12" rx="3" fill="#cbd5e1"/>
-                                {/* 動態掃描線 */}
                                 <rect x="86" y="156" width="340" height="16" fill="#f97316" opacity="0.8">
                                     <animate attributeName="y" values="156;340;156" dur="2s" repeatCount="indefinite" calcMode="spline" keySplines="0.45 0 0.55 1; 0.45 0 0.55 1" />
                                 </rect>
@@ -596,7 +461,7 @@
                                         <div className="mb-4">
                                             <label className="text-xs text-gray-500 block mb-1">鎖定模型 (推薦 gemini-2.0)</label>
                                             <select value={selectedModel} onChange={e=>setSelectedModel(e.target.value)} className="w-full bg-green-50 border border-green-200 text-green-700 rounded-lg p-3 text-sm focus:outline-none">
-                                                {dropdownModels.map(m => <option key={m} value={m}>{m}</option>)}
+                                                {["gemini-3.0-flash", "gemini-3.0-pro", "gemini-2.0-flash", "gemini-2.0-flash-exp"].map(m => <option key={m} value={m}>{m}</option>)}
                                             </select>
                                         </div>
                                     )}
@@ -614,7 +479,7 @@
                                         <label className="w-full flex justify-between p-3 bg-gray-50 rounded-xl text-gray-700 cursor-pointer"><span>匯入</span><Icon name="download" size={18}/><input type="file" accept=".json" onChange={importData} className="hidden"/></label>
                                     </div>
                                 </div>
-                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 38.0 (Corrected Icons & Splash)</div>
+                                <div className="text-center text-xs text-gray-400 mt-8">AA Version 39.0 (PWA Enhanced)</div>
                                 <button onClick={()=>setView("home")} className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4">返回</button>
                             </div>
                         )}
@@ -687,7 +552,6 @@
                             <div className="flex items-center gap-8 bg-white/90 backdrop-blur-md px-8 py-3 rounded-full shadow-2xl pointer-events-auto border border-gray-100/50">
                                 <button onClick={startScanFlow} className="relative -top-8 group flex flex-col items-center">
                                     <div className="w-16 h-16 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-full flex items-center justify-center shadow-[0_8px_20px_rgb(37,99,235,0.4)] border-4 border-white group-active:scale-95 transition-all">
-                                        {/* [修正] 掃描按鈕改回經典 scan-line 圖示 */}
                                         <Icon name="scan-line" size={32} className="text-white"/>
                                     </div>
                                     <span className="text-[10px] font-bold text-blue-700 mt-1 absolute -bottom-5">掃描名片</span>
@@ -705,7 +569,6 @@
             );
         }
         
-        // 確保 ErrorBoundary 正確拼寫
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(
             <ErrorBoundary>
