@@ -235,7 +235,23 @@
                 } catch(err) { setError(`辨識失敗: ${err.message}`); setView("home"); } finally { setIsProcessing(false); }
             };
 
+            const normalizeDuplicateText = v => String(v||"").normalize("NFKC").trim().replace(/\\s+/g," ").toLocaleLowerCase();
+            const normalizeDuplicateEmail = v => String(v||"").trim().toLocaleLowerCase();
+            const findDuplicateCards = data => cards.filter(old => {
+                if(currentCardId != null && String(old.id)===String(currentCardId)) return false;
+                const emailMatch = normalizeDuplicateEmail(data.email) && normalizeDuplicateEmail(data.email)===normalizeDuplicateEmail(old.email);
+                const companyNameMatch = normalizeDuplicateText(data.company) && normalizeDuplicateText(data.name)
+                    && normalizeDuplicateText(data.company)===normalizeDuplicateText(old.company)
+                    && normalizeDuplicateText(data.name)===normalizeDuplicateText(old.name);
+                return emailMatch || companyNameMatch;
+            });
             const saveCard = async () => {
+                const duplicates=findDuplicateCards(resultData);
+                if(duplicates.length){
+                    const display=duplicates.slice(0,3).map(d=>[d.company,d.name,d.email].filter(Boolean).join(" / ")).join("\\n");
+                    const message="發現 "+duplicates.length+" 筆可能重複的名片：\\n"+display+"\\n\\n按「確定」仍然新增這張名片；按「取消」返回檢查。\\n不會覆蓋或刪除舊資料。";
+                    if(!window.confirm(message)) return;
+                }
                 const newData = { id: currentCardId || Date.now(), ...resultData, image: capturedImage, backImage: backImage, avatar: currentAvatar, additionalImage: additionalImage, category: resultData.category||"工作-客戶" };
                 await dbUtils.put(newData); const d = await dbUtils.getAll(); setCards(sortCardsList(d)); setView("home");
             };
