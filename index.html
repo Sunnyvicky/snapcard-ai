@@ -322,8 +322,8 @@
                             e('div',{className:"relative z-10 grid grid-cols-2 gap-3"},
                                 e('button',{onClick:startScanFlow,className:"bg-white text-[#1e3a8a] rounded-2xl py-3.5 flex items-center justify-center gap-2 font-semibold shadow-sm"},
                                     e(Icon,{name:"scan-line",size:19}),"掃描名片"),
-                                e('button',{type:"button",onClick:()=>{ window.alert("手動輸入按鈕已觸發（診斷版 43）"); handleManualAdd(); },className:"bg-white text-[#1e3a8a] border border-white/60 rounded-2xl py-3.5 flex items-center justify-center gap-2 font-semibold shadow-sm"},
-                                    e(Icon,{name:"pen-tool",size:18}),"手動輸入 · V43")
+                                e('button',{type:"button",onClick:handleManualAdd,className:"bg-white text-[#1e3a8a] border border-white/60 rounded-2xl py-3.5 flex items-center justify-center gap-2 font-semibold shadow-sm"},
+                                    e(Icon,{name:"pen-tool",size:18}),"手動輸入")
                             )
                         ),
                         e('div',{className:"flex items-end justify-between pt-1"},
@@ -382,7 +382,7 @@
                                 e('label', {className: "w-full flex justify-between p-3 bg-gray-50 rounded-xl text-gray-700 cursor-pointer"}, e('span', null, "匯入"), e(Icon, {name: "download", size: 18}), e('input', {type: "file", accept: ".json", onChange: handleImportBackup, className: "hidden"}))
                             )
                         ),
-                        e('div', {className: "text-center text-xs text-gray-400 mt-8"}, "SnapCard Version 43 · Manual Entry Diagnostic"),
+                        e('div', {className: "text-center text-xs text-gray-400 mt-8"}, "SnapCard Version 44"),
                         e('button', {onClick:()=>setView("home"), className: "w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4"}, "返回")
                     ),
 
