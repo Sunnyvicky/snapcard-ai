@@ -266,14 +266,42 @@
                 });
             };
             const downloadSingleVcf = () => {
-                const card = resultData; let vcf = "BEGIN:VCARD\nVERSION:3.0\n"; let displayName = card.name || "未命名";
-                if (card.company) displayName = `${card.company} ${displayName}`; vcf += `FN:${displayName}\nN:${displayName};;;;\n`;
-                if (card.company) vcf += `ORG:${card.company};\n`; if (card.jobTitle) vcf += `TITLE:${card.jobTitle}\n`;
-                if (card.mobile) vcf += `TEL;type=CELL:${card.mobile}\n`; if (card.tel) vcf += `TEL;type=WORK:${card.tel}\n`; if (card.fax) vcf += `TEL;type=FAX:${card.fax}\n`;
-                if (card.email) vcf += `EMAIL;type=INTERNET;type=WORK:${card.email}\n`; if (card.address) vcf += `ADR;type=WORK:;;${card.address};;;;\n`;
-                let notes = []; if (card.category) notes.push(`分類: ${card.category}`); if (card.note) notes.push(card.note); if (notes.length > 0) vcf += `NOTE:${notes.join(' | ')}\n`;
-                vcf += "END:VCARD\n";
-                const blob = new Blob([vcf], { type: 'text/vcard' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.download = `${displayName}.vcf`; a.href = url; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                const card = resultData;
+                const value = v => String(v == null ? "" : v).trim();
+                const escapeVcf = v => value(v).replace(/\\/g,"\\\\").replace(/\r\n|\r|\n/g,"\\n").replace(/;/g,"\\;").replace(/,/g,"\\,");
+                const name = value(card.name) || "未命名";
+                const company = value(card.company);
+                let family = "", given = name;
+                if (/^[\u3400-\u9fff]{2,4}$/.test(name)) {
+                    const compounds = ["歐陽","司馬","上官","諸葛","夏侯","司徒","皇甫","尉遲","公孫","慕容","令狐","長孫"];
+                    const len = compounds.some(s => name.startsWith(s)) ? 2 : 1;
+                    family = name.slice(0,len); given = name.slice(len);
+                } else if (/^[A-Za-z][A-Za-z .'-]*$/.test(name) && name.trim().includes(" ")) {
+                    const parts = name.trim().split(/\s+/); family = parts.pop(); given = parts.join(" ");
+                }
+                const rows = ["BEGIN:VCARD","VERSION:3.0",
+                    "N:" + [family,given,"","",""].map(escapeVcf).join(";"),
+                    "FN:" + escapeVcf(name)
+                ];
+                if (company) rows.push("ORG:" + escapeVcf(company));
+                if (value(card.jobTitle)) rows.push("TITLE:" + escapeVcf(card.jobTitle));
+                if (value(card.mobile)) rows.push("TEL;TYPE=CELL:" + escapeVcf(card.mobile));
+                if (value(card.tel)) rows.push("TEL;TYPE=WORK:" + escapeVcf(card.tel));
+                if (value(card.fax)) rows.push("TEL;TYPE=WORK,FAX:" + escapeVcf(card.fax));
+                if (value(card.email)) rows.push("EMAIL;TYPE=INTERNET,WORK:" + escapeVcf(card.email));
+                if (value(card.address)) rows.push("ADR;TYPE=WORK:;;" + escapeVcf(card.address) + ";;;;");
+                const notes = [];
+                if (value(card.category)) notes.push("分類：" + value(card.category));
+                if (value(card.note)) notes.push(value(card.note));
+                if (notes.length) rows.push("NOTE:" + escapeVcf(notes.join("\n")));
+                rows.push("END:VCARD");
+                const vcf = rows.join("\r\n") + "\r\n";
+                const blob = new Blob([vcf], {type:"text/vcard;charset=utf-8"});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.download = (name.replace(/[\\/:*?"<>|]/g,"_") || "聯絡人") + ".vcf";
+                a.href = url; document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
             };
             const exportData = () => { const blob = new Blob([JSON.stringify(cards,null,2)], {type:"application/json"}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = "snapcard_backup.json"; a.click(); };
             const handleImportBackup = (ev) => { 
