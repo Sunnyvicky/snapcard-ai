@@ -322,7 +322,7 @@
                             e('div',{className:"grid grid-cols-2 gap-3"},
                                 e('button',{onClick:startScanFlow,className:"bg-white text-[#1e3a8a] rounded-2xl py-3.5 flex items-center justify-center gap-2 font-semibold shadow-sm"},
                                     e(Icon,{name:"scan-line",size:19}),"掃描名片"),
-                                e('button',{onClick:handleManualAdd,className:"bg-white/10 text-white border border-white/30 rounded-2xl py-3.5 flex items-center justify-center gap-2 font-semibold"},
+                                e('button',{type:"button",onClick:()=>handleManualAdd(),className:"bg-white text-[#1e3a8a] border border-white/60 rounded-2xl py-3.5 flex items-center justify-center gap-2 font-semibold shadow-sm"},
                                     e(Icon,{name:"pen-tool",size:18}),"手動輸入")
                             )
                         ),
@@ -389,6 +389,7 @@
                     view === "scan" && e(CameraScanner, {onCapture: b=>{setCapturedImage(b);setView("home");analyze(b);}, onCancel: ()=>setView("home")}),
 
                     view === "result" && e('div', {className: "bg-white min-h-full rounded-2xl shadow-sm border border-gray-100 flex flex-col"},
+                        e('div',{className:"px-5 pt-5 pb-3 border-b border-slate-100 font-semibold text-slate-800"},currentCardId?"編輯名片":capturedImage?"確認辨識資料":"手動新增名片"),
                         e('div', {className: "bg-gray-100 relative group"},
                             capturedImage ? e('img', {src: capturedImage, className: "w-full max-h-64 object-contain"}) : e('div', {className: "h-40 flex items-center justify-center text-gray-400"}, "無影像"),
                             e('label', {className: "absolute bottom-2 right-2 bg-black/50 text-white p-2 rounded-full cursor-pointer"}, e(Icon, {name: "camera", size: 16}), e('input', {type: "file", accept: "image/*", className: "hidden", onChange: ev=>handleImageUpload(ev,setCapturedImage)}))
