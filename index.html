@@ -287,28 +287,29 @@
                 );
             }
 
-            return e('div', {className: "max-w-md mx-auto h-screen bg-[#fafaf8] flex flex-col font-sans border-x border-stone-100 relative"},
-                e('header', {className: "px-6 pt-12 pb-5 bg-[#fafaf8] flex justify-between items-center z-10"},
-                    e('div',null,e('div',{className:"text-[10px] tracking-[0.3em] font-semibold text-stone-400 mb-1"},"YOUR NETWORK"),e('h1',{className:"text-[27px] font-semibold text-[#202723] tracking-tight leading-none"},"SnapCard",e('span',{className:"text-[#a78b65]"},"."))),
+            return e('div', {className: "max-w-md mx-auto h-screen bg-[#f8fafc] flex flex-col font-sans border-x border-stone-100 relative"},
+                e('header', {className: "px-6 pt-12 pb-5 bg-[#f8fafc] flex justify-between items-center z-10"},
+                    e('div',null,e('div',{className:"text-[10px] tracking-[0.3em] font-semibold text-stone-400 mb-1"},"YOUR NETWORK"),e('h1',{className:"text-[27px] font-semibold text-[#1e293b] tracking-tight leading-none"},"SnapCard",e('span',{className:"text-[#f97316]"},"."))),
                     e('button', {onClick: () => setView("settings"),className:"w-11 h-11 bg-white rounded-2xl border border-stone-200 flex items-center justify-center shadow-sm",title:"設定"}, e(Icon, {name: "settings", className: "text-stone-600"}))
                 ),
                 e('main', {className: "flex-1 overflow-y-auto px-5 pb-5 pt-2 relative"},
                     error && e('div', {className: "bg-red-100 text-red-600 p-3 rounded-lg mb-4 text-xs font-bold break-all"}, error),
                     
                     view === "home" && e('div', {className: "space-y-5"},
-                        e('div',{className:"bg-[#263a32] rounded-[28px] p-6 text-white relative overflow-hidden shadow-lg shadow-stone-200"},
+                        e('div',{className:"bg-[#1e3a8a] rounded-[28px] p-6 text-white relative overflow-hidden shadow-lg shadow-stone-200"},
                             e('div',{className:"absolute -right-10 -top-16 w-48 h-48 rounded-full border border-white/10"}),
                             e('div',{className:"absolute right-4 bottom-[-55px] w-40 h-40 rounded-full border border-white/10"}),
-                            e('div',{className:"text-xs tracking-[0.2em] text-[#d7c5a6] font-semibold mb-4"},"DIGITAL BUSINESS CARDS"),
+                            e('div',{className:"absolute top-5 right-5 w-2 h-2 rounded-full bg-orange-400"}),
+                            e('div',{className:"text-xs tracking-[0.2em] text-[#fed7aa] font-semibold mb-4"},"SNAPCARD · BUSINESS NETWORK"),
                             e('div',{className:"text-4xl font-semibold tracking-tight mb-1"},String(cards.length).padStart(2,"0")),
                             e('div',{className:"text-sm text-white/70 mb-6"},"已收藏的商務人脈"),
-                            e('button',{onClick:startScanFlow,className:"w-full bg-[#f5efe5] text-[#263a32] rounded-2xl py-3.5 flex items-center justify-center gap-2 font-semibold shadow-sm"},
+                            e('button',{onClick:startScanFlow,className:"w-full bg-white text-[#1e3a8a] rounded-2xl py-3.5 flex items-center justify-center gap-2 font-semibold shadow-sm"},
                                 e(Icon,{name:"scan-line",size:20}),"掃描新名片",e(Icon,{name:"arrow-up-right",size:17})
                             )
                         ),
                         e('div',{className:"flex items-end justify-between pt-1"},
-                            e('div',null,e('div',{className:"text-[11px] uppercase tracking-[0.2em] text-stone-400 mb-1"},"CONTACT DIRECTORY"),e('h2',{className:"text-xl font-semibold tracking-tight text-[#25352d]"},"我的名片")),
-                            e('span',{className:"text-xs text-stone-500 bg-white border border-stone-200 rounded-full px-3 py-1.5"},cards.length+" 位聯絡人")
+                            e('div',null,e('div',{className:"text-[11px] uppercase tracking-[0.2em] text-slate-400 mb-1"},"CONTACT DIRECTORY"),e('h2',{className:"text-xl font-semibold tracking-tight text-[#1e293b]"},"我的名片")),
+                            e('span',{className:"text-xs text-slate-500 bg-white border border-slate-200 rounded-full px-3 py-1.5"},cards.length+" 位聯絡人")
                         ),
                         !apiKey && e('div', {onClick:()=>setView("settings"), className: "bg-blue-50 p-4 rounded-xl text-blue-600 text-center text-sm font-bold cursor-pointer animate-pulse"}, "👉 請先設定 API Key"),
                         e('div', {className: "relative"},
@@ -317,14 +318,14 @@
                             searchQuery && e('button', {onClick:()=>setSearchQuery(""), className: "absolute right-3 top-1/2 -translate-y-1/2"}, e(Icon, {name: "x", size: 14}))
                         ),
                         e('div', {className: "flex gap-2 overflow-x-auto pb-2 hide-scrollbar"},
-                            ["全部", "工作-客戶", "工作-廠商", "家人", "朋友"].map(c => e('button', {key: c, onClick:()=>setFilterCategory(c), className: `px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${filterCategory===c?"bg-slate-800 text-white":"bg-white text-gray-500 border border-stone-200"}`}, c))
+                            ["全部", "工作-客戶", "工作-廠商", "家人", "朋友"].map(c => e('button', {key: c, onClick:()=>setFilterCategory(c), className: `px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${filterCategory===c?"bg-blue-900 text-white":"bg-white text-gray-500 border border-stone-200"}`}, c))
                         ),
                         cards.filter(c => (filterCategory==="全部" || c.category===filterCategory) && (!searchQuery || ([c.name,c.company,c.jobTitle,c.email].some(v => String(v||"").toLocaleLowerCase().includes(searchQuery.trim().toLocaleLowerCase()))))).map(c => 
-                            e('div', {key: c.id, onClick:()=>handleManualEdit(c), className: "bg-white rounded-[22px] p-4 border border-[#ebe8e2] flex items-center gap-4 shadow-[0_4px_20px_rgba(28,40,32,0.035)]"},
-                                c.avatar ? e('img', {src: c.avatar, className: "w-12 h-12 rounded-full object-cover"}) : e('div', {className: "w-12 h-12 rounded-2xl bg-[#e9eee9] flex items-center justify-center text-[#375044] font-semibold"}, c.name?.[0]),
+                            e('div', {key: c.id, onClick:()=>handleManualEdit(c), className: "bg-white rounded-[20px] p-4 border border-slate-200 flex items-center gap-4 shadow-[0_5px_20px_rgba(30,58,138,0.04)]"},
+                                c.avatar ? e('img', {src: c.avatar, className: "w-12 h-12 rounded-full object-cover"}) : e('div', {className: "w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-800 font-semibold"}, c.name?.[0]),
                                 e('div', {className: "flex-1 min-w-0"},
-                                    e('div', {className: "font-bold text-gray-800 truncate text-base"}, c.company),
-                                    e('div', {className: "font-bold text-gray-800 truncate text-base"}, c.name)
+                                    e('div', {className: "font-semibold text-[#1e293b] truncate text-base"}, c.company || "未填公司"),
+                                    e('div', {className: "text-sm text-slate-500 truncate mt-1"}, [c.name,c.jobTitle].filter(Boolean).join(" · "))
                                 ),
                                 e('button', {onClick: (ev)=>handleDeleteCard(c.id,ev), className: "p-2 text-stone-300 hover:text-red-500"}, e(Icon, {name: "trash-2", size: 16}))
                             )
@@ -345,18 +346,18 @@
                             e('p', {className: "text-[10px] text-gray-400 mb-4 ml-1"}, "✨ 貼上 Key 即可直接返回首頁掃描，無需點擊測試"),
                             availableModels.length > 0 && e('div', {className: "mb-4"},
                                 e('label', {className: "text-xs text-gray-500 block mb-1"}, "鎖定模型 (推薦 gemini-2.0)"),
-                                e('select', {value: selectedModel, onChange: ev=>setSelectedModel(ev.target.value), className: "w-full bg-green-50 border border-green-200 text-green-700 rounded-lg p-3 text-sm focus:outline-none"},
+                                e('select', {value: selectedModel, onChange: ev=>setSelectedModel(ev.target.value), className: "w-full bg-blue-50 border border-blue-200 text-blue-700 rounded-lg p-3 text-sm focus:outline-none"},
                                     dropdownModels.map(m => e('option', {key: m, value: m}, m))
                                 )
                             ),
                             e('div', {className: "flex gap-2"},
-                                e('button', {onClick: fetchModelsAndTest, disabled: testStatus==="testing", className: `flex-1 py-2 rounded-lg text-sm font-bold ${testStatus==="success"?"bg-green-100 text-green-700":testStatus==="error"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}, testStatus==="testing"?"偵測中...":testStatus==="success"?"偵測成功":"偵測可用模型清單"),
+                                e('button', {onClick: fetchModelsAndTest, disabled: testStatus==="testing", className: `flex-1 py-2 rounded-lg text-sm font-bold ${testStatus==="success"?"bg-blue-100 text-blue-700":testStatus==="error"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}, testStatus==="testing"?"偵測中...":testStatus==="success"?"偵測成功":"偵測可用模型清單"),
                                 e('button', {onClick: ()=>window.open("https://aistudio.google.com/app/apikey"), className: "flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg text-sm font-bold"}, "取得 Key")
                             ),
-                            testMessage && e('div', {className: `text-xs mt-2 p-2 rounded ${testStatus==="error"?"text-red-600 bg-red-50":"text-green-600 bg-green-50"}`}, testMessage)
+                            testMessage && e('div', {className: `text-xs mt-2 p-2 rounded ${testStatus==="error"?"text-red-600 bg-red-50":"text-blue-700 bg-blue-50"}`}, testMessage)
                         ),
                         e('div', {className: "bg-white p-5 rounded-2xl shadow-sm border border-gray-100"},
-                            e('h3', {className: "font-bold text-lg mb-4 flex items-center gap-2"}, e(Icon, {name: "database", className: "text-purple-500"}), " 資料管理"),
+                            e('h3', {className: "font-bold text-lg mb-4 flex items-center gap-2"}, e(Icon, {name: "database", className: "text-blue-500"}), " 資料管理"),
                             e('div', {className: "space-y-3"},
                                 e('button', {onClick: exportData, className: "w-full flex justify-between p-3 bg-gray-50 rounded-xl text-gray-700"}, e('span', null, "匯出 (JSON)"), e(Icon, {name: "upload", size: 18})),
                                 e('label', {className: "w-full flex justify-between p-3 bg-gray-50 rounded-xl text-gray-700 cursor-pointer"}, e('span', null, "匯入"), e(Icon, {name: "download", size: 18}), e('input', {type: "file", accept: ".json", onChange: handleImportBackup, className: "hidden"}))
@@ -407,7 +408,7 @@
                                 )
                             ),
                             e('div', {className: "flex flex-col gap-3 pt-4 pb-20"},
-                                e('button', {onClick: downloadSingleVcf, className: "w-full py-3 rounded-xl font-bold bg-green-50 text-green-600 border border-green-100 flex items-center justify-center gap-2"}, e(Icon, {name: "contact", size: 18}), "加入手機通訊錄"),
+                                e('button', {onClick: downloadSingleVcf, className: "w-full py-3 rounded-xl font-bold bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center gap-2"}, e(Icon, {name: "contact", size: 18}), "加入手機通訊錄"),
                                 e('div', {className: "flex gap-3"},
                                     e('button', {onClick:()=>setView("home"), className: "flex-1 py-3 rounded-xl font-bold text-gray-500 bg-gray-100"}, "取消"),
                                     e('button', {onClick: saveCard, className: "flex-1 py-3 rounded-xl font-bold text-white bg-slate-900 shadow-lg"}, "儲存")
