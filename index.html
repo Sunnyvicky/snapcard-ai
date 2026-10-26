@@ -45,7 +45,7 @@
         window.onerror = function(message) {
             const root = document.getElementById('root');
             if (root) {
-                root.innerHTML = '<div style="padding:20px; text-align:center; color:red; margin-top:50px;"><h3>應用程式發生錯誤</h3><p>' + message + '</p><button onclick="localStorage.clear();location.reload()" style="padding:10px; background:#eee; border:1px solid #ccc; border-radius:5px; margin-top:10px;">清除資料並重整</button></div>';
+                root.innerHTML = '<div style="padding:20px; text-align:center; color:red; margin-top:50px;"><h3>應用程式發生錯誤</h3><p>' + message + '</p><button onclick="location.reload()" style="padding:10px; background:#eee; border:1px solid #ccc; border-radius:5px; margin-top:10px;">清除資料並重整</button></div>';
             }
         };
     </script>
@@ -70,7 +70,7 @@
         class ErrorBoundary extends Component {
             constructor(p){super(p);this.state={hasError:false,error:null};} 
             static getDerivedStateFromError(err){return{hasError:true,error:err};}
-            render(){ if(this.state.hasError)return e('div', {className: "h-screen flex flex-col items-center justify-center p-4 text-red-600"}, e('h3', null, 'App 發生錯誤'), e('p', {className: "text-xs mb-4"}, this.state.error?.message), e('button', {onClick:()=>{localStorage.clear();window.location.reload()}, className: "bg-gray-200 px-4 py-2 rounded"}, '重置並重整')); return this.props.children; }
+            render(){ if(this.state.hasError)return e('div', {className: "h-screen flex flex-col items-center justify-center p-4 text-red-600"}, e('h3', null, 'App 發生錯誤'), e('p', {className: "text-xs mb-4"}, this.state.error?.message), e('button', {onClick:()=>{window.location.reload()}, className: "bg-gray-200 px-4 py-2 rounded"}, '重置並重整')); return this.props.children; }
         }
 
         const Icon = ({ name, size = 20, className = "" }) => {
@@ -322,8 +322,8 @@
                             e('div',{className:"relative z-10 grid grid-cols-2 gap-3"},
                                 e('button',{onClick:startScanFlow,className:"bg-white text-[#1e3a8a] rounded-2xl py-3.5 flex items-center justify-center gap-2 font-semibold shadow-sm"},
                                     e(Icon,{name:"scan-line",size:19}),"掃描名片"),
-                                e('button',{type:"button",onClick:()=>handleManualAdd(),className:"bg-white text-[#1e3a8a] border border-white/60 rounded-2xl py-3.5 flex items-center justify-center gap-2 font-semibold shadow-sm"},
-                                    e(Icon,{name:"pen-tool",size:18}),"手動輸入")
+                                e('button',{type:"button",onClick:()=>{ window.alert("手動輸入按鈕已觸發（診斷版 43）"); handleManualAdd(); },className:"bg-white text-[#1e3a8a] border border-white/60 rounded-2xl py-3.5 flex items-center justify-center gap-2 font-semibold shadow-sm"},
+                                    e(Icon,{name:"pen-tool",size:18}),"手動輸入 · V43")
                             )
                         ),
                         e('div',{className:"flex items-end justify-between pt-1"},
@@ -382,7 +382,7 @@
                                 e('label', {className: "w-full flex justify-between p-3 bg-gray-50 rounded-xl text-gray-700 cursor-pointer"}, e('span', null, "匯入"), e(Icon, {name: "download", size: 18}), e('input', {type: "file", accept: ".json", onChange: handleImportBackup, className: "hidden"}))
                             )
                         ),
-                        e('div', {className: "text-center text-xs text-gray-400 mt-8"}, "AA Version 42.0 (Native Complete)"),
+                        e('div', {className: "text-center text-xs text-gray-400 mt-8"}, "SnapCard Version 43 · Manual Entry Diagnostic"),
                         e('button', {onClick:()=>setView("home"), className: "w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold mt-4"}, "返回")
                     ),
 
