@@ -91,9 +91,46 @@
             i.onload=()=>{ URL.revokeObjectURL(u); const c=document.createElement('canvas'); const m=2400; let w=i.width,h=i.height; if(w>h){if(w>m){h*=m/w;w=m;}}else{if(h>m){w*=m/h;h=m;}} c.width=w; c.height=h; const ctx=c.getContext('2d'); ctx.drawImage(i,0,0,w,h); res(c.toDataURL('image/jpeg',0.92)); }; i.onerror=rej;
         });
 
+        const CardPhotoCropper = ({file,onDone,onCancel}) => {
+            const [src,setSrc]=useState(""),[zoom,setZoom]=useState(1),[offset,setOffset]=useState({x:0,y:0}),[error,setError]=useState("");
+            const imgRef=useRef(null),frameRef=useRef(null),dragRef=useRef(null);
+            useEffect(()=>{const url=URL.createObjectURL(file);setSrc(url);return()=>URL.revokeObjectURL(url);},[file]);
+            const move=(x,y)=>{const box=frameRef.current?.getBoundingClientRect();if(!box)return;setOffset(p=>({x:Math.max(-box.width*zoom/2,Math.min(box.width*zoom/2,p.x+x)),y:Math.max(-box.height*zoom/2,Math.min(box.height*zoom/2,p.y+y))}));};
+            const crop=()=>{
+                const img=imgRef.current,box=frameRef.current?.getBoundingClientRect();if(!img?.naturalWidth||!box){setError("照片尚未載入");return;}
+                const iw=img.naturalWidth,ih=img.naturalHeight,ratio=1.6;
+                const baseScale=Math.max(box.width/iw,box.height/ih),scale=baseScale*zoom;
+                const sw=box.width/scale,sh=box.height/scale;
+                const sx=(iw-sw)/2-offset.x/scale,sy=(ih-sh)/2-offset.y/scale;
+                const maxWidth=3000,outputWidth=Math.min(maxWidth,Math.round(sw));
+                const canvas=document.createElement("canvas");canvas.width=Math.max(1,outputWidth);canvas.height=Math.round(canvas.width/ratio);
+                canvas.getContext("2d").drawImage(img,sx,sy,sw,sh,0,0,canvas.width,canvas.height);
+                onDone(canvas.toDataURL("image/jpeg",0.94));
+            };
+            return e('div',{className:"fixed inset-0 z-[60] bg-[#fafaf8] flex flex-col p-4"},
+                e('h2',{className:"text-xl font-semibold text-slate-900 mb-2"},"調整名片範圍"),
+                e('p',{className:"text-sm text-slate-500 mb-5"},"拖曳照片、調整大小，讓名片完整填滿橫式框。"),
+                e('div',{className:"flex-1 min-h-0 flex items-center justify-center"},
+                    e('div',{ref:frameRef,className:"w-full max-w-lg aspect-[1.6/1] relative overflow-hidden bg-slate-900 rounded-xl touch-none border-2 border-slate-300",
+                        onPointerDown:ev=>{ev.currentTarget.setPointerCapture(ev.pointerId);dragRef.current={x:ev.clientX,y:ev.clientY};},
+                        onPointerMove:ev=>{if(!dragRef.current)return;move(ev.clientX-dragRef.current.x,ev.clientY-dragRef.current.y);dragRef.current={x:ev.clientX,y:ev.clientY};},
+                        onPointerUp:()=>dragRef.current=null,onPointerCancel:()=>dragRef.current=null},
+                        src&&e('img',{ref:imgRef,src,draggable:false,alt:"待裁切名片",className:"absolute w-full h-full object-cover select-none pointer-events-none",style:{transform:`translate(${offset.x}px,${offset.y}px) scale(${zoom})`,transformOrigin:"center center"}})
+                    )
+                ),
+                e('label',{className:"text-sm text-slate-700 mt-4 mb-2"},"放大比例"),
+                e('input',{type:"range",min:"1",max:"3",step:"0.05",value:zoom,onChange:ev=>{setZoom(Number(ev.target.value));setOffset({x:0,y:0});},className:"w-full mb-4"}),
+                error&&e('p',{className:"text-red-600 text-sm"},error),
+                e('div',{className:"flex gap-3 pb-3"},
+                    e('button',{onClick:onCancel,className:"flex-1 rounded-xl bg-white border border-slate-200 py-3"},"重新選擇"),
+                    e('button',{onClick:crop,className:"flex-1 rounded-xl bg-slate-900 text-white py-3 font-semibold"},"確認裁切並辨識")
+                )
+            );
+        };
+
         const CameraScanner = ({onCapture,onCancel}) => {
             const videoRef = useRef(null), streamRef = useRef(null), inputRef = useRef(null);
-            const [preview,setPreview] = useState(null), [error,setError] = useState(""), [cameraReady,setCameraReady] = useState(false), [fallback,setFallback] = useState(false);
+            const [preview,setPreview] = useState(null), [cropFile,setCropFile] = useState(null), [error,setError] = useState(""), [cameraReady,setCameraReady] = useState(false), [fallback,setFallback] = useState(false);
             useEffect(() => {
                 let active = true;
                 (async () => {
@@ -109,7 +146,7 @@
             },[]);
             const takeNativePhoto = async ev => {
                 const file=ev.target.files?.[0]; if(!file)return;
-                try {setPreview(await compressImage(file));setError("");}
+                try {setCropFile(file);setError("");}
                 catch(err){setError("照片讀取失敗，請重試");}
                 ev.target.value="";
             };
@@ -123,6 +160,7 @@
                 canvas.getContext("2d").drawImage(video,sx,sy,sw,sh,0,0,canvas.width,canvas.height);
                 setPreview(canvas.toDataURL("image/jpeg",0.92));setError("");
             };
+            if(cropFile)return e(CardPhotoCropper,{file:cropFile,onDone:img=>{setPreview(img);setCropFile(null);},onCancel:()=>setCropFile(null)});
             return e('div',{className:"fixed inset-0 z-50 bg-white flex flex-col p-4"},
                 e('h2',{className:"text-xl font-bold text-slate-900 mb-2"},"拍攝名片"),
                 e('p',{className:"text-sm text-slate-500 mb-4"},"將名片橫向對準取景框，拍攝後確認再辨識。"),
@@ -295,8 +333,8 @@
                 );
             }
 
-            return e('div', {className: "max-w-md mx-auto h-screen bg-slate-50 flex flex-col font-sans border-x border-slate-100 relative"},
-                e('header', {className: "px-6 pt-12 pb-4 bg-slate-900 text-white border-b border-slate-800 flex justify-between items-center z-10"},
+            return e('div', {className: "max-w-md mx-auto h-screen bg-[#fafaf8] flex flex-col font-sans border-x border-stone-100 relative"},
+                e('header', {className: "px-6 pt-12 pb-4 bg-white border-b border-slate-100 flex justify-between items-center z-10"},
                     e('h1', {className: "text-xl font-black text-slate-900 tracking-wider"}, "SNAPCARD"),
                     e('button', {onClick: () => setView("settings")}, e(Icon, {name: "settings", className: "text-gray-400"}))
                 ),
@@ -307,15 +345,15 @@
                         !apiKey && e('div', {onClick:()=>setView("settings"), className: "bg-blue-50 p-4 rounded-xl text-blue-600 text-center text-sm font-bold cursor-pointer animate-pulse"}, "👉 請先設定 API Key"),
                         e('div', {className: "relative"},
                             e('div', {className: "absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"}, e(Icon, {name: "search", size: 16})),
-                            e('input', {type: "text", placeholder: "搜尋...", className: "w-full bg-white border border-gray-100 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none", value: searchQuery, onChange: ev=>setSearchQuery(ev.target.value)}),
+                            e('input', {type: "text", placeholder: "搜尋...", className: "w-full bg-white border border-stone-200 rounded-2xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200", value: searchQuery, onChange: ev=>setSearchQuery(ev.target.value)}),
                             searchQuery && e('button', {onClick:()=>setSearchQuery(""), className: "absolute right-3 top-1/2 -translate-y-1/2"}, e(Icon, {name: "x", size: 14}))
                         ),
                         e('div', {className: "flex gap-2 overflow-x-auto pb-2 hide-scrollbar"},
-                            ["全部", "工作-客戶", "工作-廠商", "家人", "朋友"].map(c => e('button', {key: c, onClick:()=>setFilterCategory(c), className: `px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${filterCategory===c?"bg-slate-900 text-white":"bg-white text-gray-500 border border-gray-100"}`}, c))
+                            ["全部", "工作-客戶", "工作-廠商", "家人", "朋友"].map(c => e('button', {key: c, onClick:()=>setFilterCategory(c), className: `px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${filterCategory===c?"bg-slate-800 text-white":"bg-white text-gray-500 border border-stone-200"}`}, c))
                         ),
                         cards.filter(c => (filterCategory==="全部" || c.category===filterCategory) && (!searchQuery || ([c.name,c.company,c.jobTitle,c.email].some(v => String(v||"").toLocaleLowerCase().includes(searchQuery.trim().toLocaleLowerCase()))))).map(c => 
-                            e('div', {key: c.id, onClick:()=>handleManualEdit(c), className: "bg-white rounded-2xl p-4 shadow-md shadow-slate-100 border border-slate-100 flex items-center gap-4"},
-                                c.avatar ? e('img', {src: c.avatar, className: "w-12 h-12 rounded-full object-cover"}) : e('div', {className: "w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-500 font-bold"}, c.name?.[0]),
+                            e('div', {key: c.id, onClick:()=>handleManualEdit(c), className: "bg-white rounded-2xl p-4 shadow-sm border border-stone-200 flex items-center gap-4"},
+                                c.avatar ? e('img', {src: c.avatar, className: "w-12 h-12 rounded-full object-cover"}) : e('div', {className: "w-12 h-12 rounded-full bg-stone-100 flex items-center justify-center text-slate-700 font-bold"}, c.name?.[0]),
                                 e('div', {className: "flex-1 min-w-0"},
                                     e('div', {className: "font-bold text-gray-800 truncate text-base"}, c.company),
                                     e('div', {className: "font-bold text-gray-800 truncate text-base"}, c.name)
