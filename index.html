@@ -281,16 +281,19 @@
                 }
                 const rows = ["BEGIN:VCARD","VERSION:3.0",
                     "N:" + [family,given,"","",""].map(escapeVcf).join(";"),
-                    "FN:" + escapeVcf(name)
+                    "FN:" + escapeVcf(name),
+                    "X-PHONETIC-FIRST-NAME:" + escapeVcf(given),
+                    "X-PHONETIC-LAST-NAME:" + escapeVcf(family)
                 ];
                 if (company) rows.push("ORG:" + escapeVcf(company));
-                if (value(card.jobTitle)) rows.push("TITLE:" + escapeVcf(card.jobTitle));
+                // 職稱只放在附註，不輸出 TITLE 欄位。
                 if (value(card.mobile)) rows.push("TEL;TYPE=CELL:" + escapeVcf(card.mobile));
                 if (value(card.tel)) rows.push("TEL;TYPE=WORK:" + escapeVcf(card.tel));
                 if (value(card.fax)) rows.push("TEL;TYPE=WORK,FAX:" + escapeVcf(card.fax));
                 if (value(card.email)) rows.push("EMAIL;TYPE=INTERNET,WORK:" + escapeVcf(card.email));
                 if (value(card.address)) rows.push("ADR;TYPE=WORK:;;" + escapeVcf(card.address) + ";;;;");
                 const notes = [];
+                if (value(card.jobTitle)) notes.push("職稱：" + value(card.jobTitle));
                 if (value(card.category)) notes.push("分類：" + value(card.category));
                 if (value(card.note)) notes.push(value(card.note));
                 if (notes.length) rows.push("NOTE:" + escapeVcf(notes.join("\n")));
