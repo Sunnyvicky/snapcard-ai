@@ -42,12 +42,14 @@
         </div>
     </div>
     <script>
-        window.onerror = function(message) {
-            const root = document.getElementById('root');
-            if (root) {
-                root.innerHTML = '<div style="padding:20px; text-align:center; color:red; margin-top:50px;"><h3>應用程式發生錯誤</h3><p>' + message + '</p><button onclick="location.reload()" style="padding:10px; background:#eee; border:1px solid #ccc; border-radius:5px; margin-top:10px;">清除資料並重整</button></div>';
-            }
-        };
+        // External CDN scripts can emit opaque "Script error." events on iOS.
+        // Log diagnostics without destroying the mounted React app or user data.
+        window.addEventListener('error', function(event) {
+            console.error('SnapCard script error:', event.message, event.filename, event.lineno, event.colno, event.error || '');
+        });
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('SnapCard async error:', event.reason);
+        });
     </script>
     <script>
         const { useState, useRef, useEffect, useMemo, Component } = React;
@@ -70,7 +72,7 @@
         class ErrorBoundary extends Component {
             constructor(p){super(p);this.state={hasError:false,error:null};} 
             static getDerivedStateFromError(err){return{hasError:true,error:err};}
-            render(){ if(this.state.hasError)return e('div', {className: "h-screen flex flex-col items-center justify-center p-4 text-red-600"}, e('h3', null, 'App 發生錯誤'), e('p', {className: "text-xs mb-4"}, this.state.error?.message), e('button', {onClick:()=>{window.location.reload()}, className: "bg-gray-200 px-4 py-2 rounded"}, '重置並重整')); return this.props.children; }
+            render(){ if(this.state.hasError)return e('div', {className: "h-screen flex flex-col items-center justify-center p-4 text-red-600"}, e('h3', null, 'App 發生錯誤'), e('p', {className: "text-xs mb-4"}, this.state.error?.message), e('button', {onClick:()=>{window.location.reload()}, className: "bg-gray-200 px-4 py-2 rounded"}, '重新整理')); return this.props.children; }
         }
 
         const Icon = ({ name, size = 20, className = "" }) => {
